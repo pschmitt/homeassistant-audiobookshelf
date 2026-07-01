@@ -9,6 +9,9 @@ Home Assistant custom integration for Audiobookshelf. The first implemented feat
 - UI config flow, reconfigure flow, reauth flow, options flow, diagnostics, repairs.
 - Secure webhook endpoint for Audiobookshelf notifications.
 - `event.audiobookshelf_library_item` for normalized library item webhook events.
+- Sensors for server status/version, e-reader devices, default e-reader device, last library item, send counters, and webhook URL.
+- `select.audiobookshelf_default_e_reader_device` to choose the default Audiobookshelf e-reader device from devices visible to the configured user.
+- Buttons to refresh cached server/device data and send the last received ebook to the selected default e-reader device.
 - Duplicate suppression backed by Home Assistant storage.
 - Manual `audiobookshelf.send_ebook_to_device` and `audiobookshelf.reset_sent_item` services.
 - Uses Audiobookshelf's own e-reader and email settings. Home Assistant does not store SMTP credentials or send mail directly.

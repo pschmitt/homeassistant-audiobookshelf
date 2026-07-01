@@ -59,6 +59,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else:
         _delete_setup_issues(hass, entry)
 
+    await manager.async_refresh()
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "client": client,
         "manager": manager,
@@ -68,7 +70,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await async_register_services(hass)
     async_register_webhook(hass, entry, manager)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(async_update_listener))
     return True
 
 

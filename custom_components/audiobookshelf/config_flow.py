@@ -104,10 +104,10 @@ def _device_schema(defaults: dict[str, Any], devices: list[str]) -> vol.Schema:
 
 def _options_schema(defaults: dict[str, Any], devices: list[str]) -> vol.Schema:
     """Build options schema."""
+    del devices
     return vol.Schema(
         {
             vol.Required(CONF_AUTO_SEND, default=defaults.get(CONF_AUTO_SEND, DEFAULT_AUTO_SEND)): BooleanSelector(),
-            **_device_schema(defaults, devices).schema,
         }
     )
 
@@ -229,20 +229,8 @@ class AudiobookshelfOptionsFlow(OptionsFlow):
         """Manage options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=dict(user_input))
-        try:
-            devices = await _async_get_ereader_devices(
-                self.hass,
-                {
-                    CONF_ABS_URL: self._entry.data[CONF_ABS_URL],
-                    CONF_ABS_TOKEN: self._entry.data[CONF_ABS_TOKEN],
-                    CONF_VERIFY_SSL: self._entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
-                },
-            )
-        except (CannotConnect, InvalidAuth):
-            devices = []
         defaults = {
             CONF_AUTO_SEND: DEFAULT_AUTO_SEND,
-            CONF_DEVICE_NAME: "",
             **dict(self._entry.options),
         }
-        return self.async_show_form(step_id="init", data_schema=_options_schema(defaults, devices))
+        return self.async_show_form(step_id="init", data_schema=_options_schema(defaults, []))

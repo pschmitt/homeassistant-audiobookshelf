@@ -41,17 +41,17 @@
       "unknown": "Unexpected error."
     },
     "abort": {
-      "already_configured": "This Audiobookshelf account is already configured."
+      "already_configured": "This Audiobookshelf account is already configured.",
+      "reconfigure_successful": "Audiobookshelf was reconfigured successfully."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Audiobookshelf options",
-        "description": "Automatic sending can use Audiobookshelf's own send-to-device feature and configured e-reader devices.",
+        "description": "Automatic sending can use Audiobookshelf's own send-to-device feature. Choose the default e-reader device from the Audiobookshelf select entity.",
         "data": {
-          "auto_send": "Send webhook items automatically",
-          "device_name": "Default e-reader device"
+          "auto_send": "Send webhook items automatically"
         }
       }
     }
@@ -72,6 +72,24 @@
       },
       "webhook_path": {
         "name": "Webhook path"
+      },
+      "server_status": {
+        "name": "Server status"
+      },
+      "server_version": {
+        "name": "Server version"
+      },
+      "ereader_devices": {
+        "name": "E-reader devices"
+      },
+      "default_ereader_device": {
+        "name": "Default e-reader device"
+      },
+      "last_library_item": {
+        "name": "Last library item"
+      },
+      "last_refresh": {
+        "name": "Last refresh"
       }
     },
     "event": {
@@ -80,8 +98,16 @@
       }
     },
     "button": {
-      "test_connection": {
-        "name": "Test connection"
+      "refresh_data": {
+        "name": "Refresh data"
+      },
+      "send_last_ebook_to_device": {
+        "name": "Send last ebook to device"
+      }
+    },
+    "select": {
+      "default_ereader_device": {
+        "name": "Default e-reader device"
       }
     }
   },

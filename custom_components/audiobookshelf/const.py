@@ -5,7 +5,7 @@ from __future__ import annotations
 from homeassistant.const import Platform
 
 DOMAIN = "audiobookshelf"
-PLATFORMS = [Platform.SENSOR, Platform.BUTTON, Platform.EVENT]
+PLATFORMS = [Platform.SENSOR, Platform.BUTTON, Platform.EVENT, Platform.SELECT]
 
 CONF_ABS_URL = "abs_url"
 CONF_ABS_TOKEN = "abs_token"

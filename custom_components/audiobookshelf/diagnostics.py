@@ -28,4 +28,6 @@ async def async_get_config_entry_diagnostics(
         "failed_count": manager.failed_count,
         "last_result": None if manager.last_result is None else manager.last_result.__dict__,
         "last_event": manager.last_event,
+        "server_status": manager.server_status,
+        "ereader_devices": manager.ereader_device_names,
     }

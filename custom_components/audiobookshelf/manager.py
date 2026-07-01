@@ -7,6 +7,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.storage import Store
@@ -27,7 +28,7 @@ from .const import (
     STORAGE_VERSION,
     SIGNAL_UPDATED,
 )
-from .exceptions import MissingDevice, MissingEbook, SendFailed
+from .exceptions import CannotConnect, MissingDevice, MissingEbook, SendFailed
 from .models import SendResult, normalize_ebook
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,6 +49,9 @@ class AudiobookshelfManager:
         self.client = client
         self.last_result: SendResult | None = None
         self.last_event: dict[str, Any] | None = None
+        self.server_status: dict[str, Any] = {}
+        self.ereader_devices: list[dict[str, Any]] = []
+        self.last_refresh = None
         self._event_id = 0
         self.sent_count = 0
         self.skipped_count = 0
@@ -60,6 +64,17 @@ class AudiobookshelfManager:
         stored = await self._store.async_load()
         self._sent_items = dict((stored or {}).get(self.entry.entry_id, {}))
         self.sent_count = len(self._sent_items)
+
+    async def async_refresh(self) -> None:
+        """Refresh server status and visible e-reader devices."""
+        try:
+            self.server_status = await self.client.async_get_status()
+        except CannotConnect:
+            _LOGGER.debug("Could not refresh Audiobookshelf server status", exc_info=True)
+            self.server_status = {}
+        self.ereader_devices = await self.client.async_get_ereader_devices()
+        self.last_refresh = dt_util.utcnow()
+        self._async_write_state()
 
     async def async_save(self) -> None:
         """Persist sent item state."""
@@ -164,6 +179,37 @@ class AudiobookshelfManager:
     async def async_send_item(self, item_id: str, *, force: bool = False, source: str = "service") -> SendResult:
         """Backward-compatible wrapper for older service callers."""
         return await self.async_send_ebook_to_device(item_id, force=force, source=source)
+
+    async def async_send_last_ebook_to_device(self) -> SendResult:
+        """Send the most recently received webhook item to the default e-reader device."""
+        if self.last_event is None or not self.last_event.get("item_id"):
+            raise SendFailed("No Audiobookshelf library item has been received yet")
+        return await self.async_send_ebook_to_device(
+            str(self.last_event["item_id"]),
+            force=True,
+            source="button",
+        )
+
+    async def async_set_default_device(self, device_name: str) -> None:
+        """Persist the default e-reader device selected from the entity."""
+        options = dict(self.entry.options)
+        options[CONF_DEVICE_NAME] = device_name
+        self.hass.config_entries.async_update_entry(self.entry, options=options)
+        self._async_write_state()
+
+    @property
+    def default_device_name(self) -> str | None:
+        """Return the configured default e-reader device."""
+        return self.entry.options.get(CONF_DEVICE_NAME)
+
+    @property
+    def ereader_device_names(self) -> list[str]:
+        """Return visible e-reader device names."""
+        names = [str(device["name"]) for device in self.ereader_devices if isinstance(device, dict) and device.get("name")]
+        default_device = self.default_device_name
+        if default_device and default_device not in names:
+            names.insert(0, default_device)
+        return names
 
     def _async_write_state(self) -> None:
         """Notify entities that manager state changed."""

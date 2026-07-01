@@ -5,12 +5,15 @@ from __future__ import annotations
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
+from .exceptions import AudiobookshelfError
 
 BUTTONS = (
-    ButtonEntityDescription(key="test_connection", translation_key="test_connection", icon="mdi:connection"),
+    ButtonEntityDescription(key="refresh_data", translation_key="refresh_data", icon="mdi:refresh"),
+    ButtonEntityDescription(key="send_last_ebook_to_device", translation_key="send_last_ebook_to_device", icon="mdi:book-arrow-right"),
 )
 
 
@@ -44,4 +47,12 @@ class AudiobookshelfButton(ButtonEntity):
 
     async def async_press(self) -> None:
         """Press the button."""
-        await self._manager.client.async_validate()
+        try:
+            if self.entity_description.key == "refresh_data":
+                await self._manager.async_refresh()
+                return
+            if self.entity_description.key == "send_last_ebook_to_device":
+                await self._manager.async_send_last_ebook_to_device()
+                return
+        except AudiobookshelfError as err:
+            raise HomeAssistantError(str(err)) from err
