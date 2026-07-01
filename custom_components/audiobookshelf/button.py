@@ -1,4 +1,4 @@
-"""Buttons for Audiobookshelf Kindle."""
+"""Buttons for Audiobookshelf."""
 
 from __future__ import annotations
 
@@ -21,10 +21,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up buttons."""
     manager = hass.data[DOMAIN][entry.entry_id]["manager"]
-    async_add_entities(AudiobookshelfKindleButton(entry, manager, desc) for desc in BUTTONS)
+    async_add_entities(AudiobookshelfButton(entry, manager, desc) for desc in BUTTONS)
 
 
-class AudiobookshelfKindleButton(ButtonEntity):
+class AudiobookshelfButton(ButtonEntity):
     """Integration button."""
 
     _attr_has_entity_name = True
@@ -39,7 +39,7 @@ class AudiobookshelfKindleButton(ButtonEntity):
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": entry.title,
             "manufacturer": "Audiobookshelf",
-            "model": "Send to Kindle bridge",
+            "model": "Audiobookshelf server",
         }
 
     async def async_press(self) -> None:

@@ -1,31 +1,27 @@
-"""Exceptions for Audiobookshelf Kindle."""
+"""Exceptions for Audiobookshelf."""
 
 from __future__ import annotations
 
 
-class AudiobookshelfKindleError(Exception):
+class AudiobookshelfError(Exception):
     """Base integration error."""
 
 
-class CannotConnect(AudiobookshelfKindleError):
+class CannotConnect(AudiobookshelfError):
     """Raised when Audiobookshelf cannot be reached."""
 
 
-class InvalidAuth(AudiobookshelfKindleError):
+class InvalidAuth(AudiobookshelfError):
     """Raised when Audiobookshelf authentication fails."""
 
 
-class SendFailed(AudiobookshelfKindleError):
-    """Raised when a Kindle send fails."""
+class SendFailed(AudiobookshelfError):
+    """Raised when Audiobookshelf cannot send an ebook to a device."""
 
 
-class MissingEbook(AudiobookshelfKindleError):
+class MissingEbook(AudiobookshelfError):
     """Raised when an ABS item has no ebook file."""
 
 
-class UnsupportedFormat(AudiobookshelfKindleError):
-    """Raised when an ebook format is not accepted."""
-
-
-class AttachmentTooLarge(AudiobookshelfKindleError):
-    """Raised when an ebook exceeds the configured size limit."""
+class MissingDevice(AudiobookshelfError):
+    """Raised when no e-reader device is configured."""

@@ -1,4 +1,4 @@
-"""Webhook support for Audiobookshelf Kindle."""
+"""Webhook support for Audiobookshelf."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import CONF_WEBHOOK_ID, DOMAIN
-from .manager import AudiobookshelfKindleManager
+from .manager import AudiobookshelfManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ _LOGGER = logging.getLogger(__name__)
 def async_register_webhook(
     hass: HomeAssistant,
     entry: ConfigEntry,
-    manager: AudiobookshelfKindleManager,
+    manager: AudiobookshelfManager,
 ) -> None:
     """Register the ABS notification webhook."""
 
@@ -36,14 +36,14 @@ def async_register_webhook(
         try:
             result = await manager.async_handle_webhook(payload)
         except Exception:  # noqa: BLE001
-            _LOGGER.exception("Failed to process Audiobookshelf Kindle webhook")
+            _LOGGER.exception("Failed to process Audiobookshelf webhook")
             return web.json_response({"ok": False}, status=500)
         return web.json_response({"ok": True, "result": None if result is None else result.__dict__})
 
     async_register_ha_webhook(
         hass,
         DOMAIN,
-        "Audiobookshelf Kindle",
+        "Audiobookshelf",
         entry.data[CONF_WEBHOOK_ID],
         _handle_webhook,
         local_only=False,

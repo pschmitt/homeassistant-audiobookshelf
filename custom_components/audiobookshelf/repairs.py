@@ -1,4 +1,4 @@
-"""Repairs for Audiobookshelf Kindle."""
+"""Repairs for Audiobookshelf."""
 
 from __future__ import annotations
 

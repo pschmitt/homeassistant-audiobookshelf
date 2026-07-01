@@ -1,9 +1,8 @@
-"""Runtime manager for Audiobookshelf Kindle."""
+"""Runtime manager for Audiobookshelf."""
 
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -14,30 +13,28 @@ from homeassistant.helpers.storage import Store
 
 from .api import AudiobookshelfClient
 from .const import (
-    CONF_ACCEPTED_FORMATS,
     CONF_AUTO_SEND,
-    CONF_HA_LOCAL_ROOT,
-    CONF_LOCAL_ABS_ROOT,
-    CONF_MAX_ATTACHMENT_MB,
+    CONF_DEVICE_NAME,
     DOMAIN,
+    EVENT_LIBRARY_ITEM_RECEIVED,
+    EVENT_LIBRARY_ITEM_UNKNOWN,
+    EVENT_LIBRARY_ITEM_UPDATED,
     EVENT_ITEM_RECEIVED,
     ISSUE_MISSING_EBOOK,
+    ISSUE_MISSING_DEVICE,
     ISSUE_SEND_FAILED,
-    ISSUE_SIZE_LIMIT,
-    ISSUE_UNSUPPORTED_FORMAT,
     STORAGE_KEY,
     STORAGE_VERSION,
     SIGNAL_UPDATED,
 )
-from .exceptions import AttachmentTooLarge, MissingEbook, SendFailed, UnsupportedFormat
-from .mailer import KindleMailer
+from .exceptions import MissingDevice, MissingEbook, SendFailed
 from .models import SendResult, normalize_ebook
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class AudiobookshelfKindleManager:
-    """Coordinate webhook events, ABS metadata, and Kindle sends."""
+class AudiobookshelfManager:
+    """Coordinate webhook events, ABS metadata, and e-reader device sends."""
 
     def __init__(
         self,
@@ -49,8 +46,9 @@ class AudiobookshelfKindleManager:
         self.hass = hass
         self.entry = entry
         self.client = client
-        self.mailer = KindleMailer(hass, entry.data)
         self.last_result: SendResult | None = None
+        self.last_event: dict[str, Any] | None = None
+        self._event_id = 0
         self.sent_count = 0
         self.skipped_count = 0
         self.failed_count = 0
@@ -69,9 +67,10 @@ class AudiobookshelfKindleManager:
         stored[self.entry.entry_id] = self._sent_items
         await self._store.async_save(stored)
 
-    async def async_reset_sent_item(self, item_id: str) -> bool:
+    async def async_reset_sent_item(self, item_id: str, device_name: str | None = None) -> bool:
         """Remove a sent marker so an item can be resent."""
-        existed = self._sent_items.pop(item_id, None) is not None
+        key = self._sent_key(item_id, device_name)
+        existed = self._sent_items.pop(key, None) is not None
         if existed:
             self.sent_count = len(self._sent_items)
             await self.async_save()
@@ -83,26 +82,48 @@ class AudiobookshelfKindleManager:
         if not item_id:
             _LOGGER.debug("Ignoring Audiobookshelf webhook without item id: %s", payload)
             return None
+        self._event_id += 1
+        event = _normalize_event(self.entry.entry_id, self._event_id, item_id, payload)
+        self.last_event = event
         self.hass.bus.async_fire(
             EVENT_ITEM_RECEIVED,
-            {
-                "entry_id": self.entry.entry_id,
-                "item_id": item_id,
-                "payload": payload,
-            },
+            event,
         )
+        self._async_write_state()
         if not self.entry.options.get(CONF_AUTO_SEND, False):
-            result = SendResult(item_id=item_id, title=item_id, sent=False, skipped=True, reason="auto_send_disabled")
+            result = SendResult(item_id=item_id, title=item_id, device_name=None, sent=False, skipped=True, reason="auto_send_disabled")
             self.last_result = result
             self.skipped_count += 1
             self._async_write_state()
             return result
-        return await self.async_send_item(item_id, source="webhook")
+        return await self.async_send_ebook_to_device(item_id, source="webhook")
 
-    async def async_send_item(self, item_id: str, *, force: bool = False, source: str = "service") -> SendResult:
-        """Send an ABS item to Kindle."""
-        if not force and item_id in self._sent_items:
-            result = SendResult(item_id=item_id, title=self._sent_items[item_id].get("title", item_id), sent=False, skipped=True, reason="already_sent")
+    async def async_send_ebook_to_device(
+        self,
+        item_id: str,
+        *,
+        device_name: str | None = None,
+        force: bool = False,
+        source: str = "service",
+    ) -> SendResult:
+        """Ask Audiobookshelf to send an item to an e-reader device."""
+        resolved_device_name = device_name or self.entry.options.get(CONF_DEVICE_NAME)
+        if not resolved_device_name:
+            err = MissingDevice("No Audiobookshelf e-reader device is configured")
+            self.failed_count += 1
+            self._create_issue(ISSUE_MISSING_DEVICE, str(err))
+            raise err
+
+        sent_key = self._sent_key(item_id, resolved_device_name)
+        if not force and sent_key in self._sent_items:
+            result = SendResult(
+                item_id=item_id,
+                title=self._sent_items[sent_key].get("title", item_id),
+                device_name=resolved_device_name,
+                sent=False,
+                skipped=True,
+                reason="already_sent",
+            )
             self.last_result = result
             self.skipped_count += 1
             self._async_write_state()
@@ -111,75 +132,47 @@ class AudiobookshelfKindleManager:
         try:
             item = await self.client.async_get_item(item_id)
             ebook = normalize_ebook(item)
-            accepted = [fmt.lower().lstrip(".") for fmt in self.entry.options.get(CONF_ACCEPTED_FORMATS, [])]
-            if ebook.format not in accepted:
-                raise UnsupportedFormat(f"{ebook.format} is not in {accepted}")
-            max_bytes = int(self.entry.options.get(CONF_MAX_ATTACHMENT_MB, 45)) * 1024 * 1024
-            if ebook.size is not None and ebook.size > max_bytes:
-                raise AttachmentTooLarge(f"{ebook.filename} exceeds configured attachment size limit")
-            content = await self._async_get_ebook_content(ebook)
-            if len(content) > max_bytes:
-                raise AttachmentTooLarge(f"{ebook.filename} exceeds configured attachment size limit")
-            await self.mailer.async_send(ebook, content)
+            await self.client.async_send_ebook_to_device(item_id, resolved_device_name)
         except MissingEbook as err:
             self.failed_count += 1
             self._create_issue(ISSUE_MISSING_EBOOK, str(err))
-            raise
-        except UnsupportedFormat as err:
-            self.failed_count += 1
-            self._create_issue(ISSUE_UNSUPPORTED_FORMAT, str(err))
-            raise
-        except AttachmentTooLarge as err:
-            self.failed_count += 1
-            self._create_issue(ISSUE_SIZE_LIMIT, str(err))
             raise
         except SendFailed as err:
             self.failed_count += 1
             self._create_issue(ISSUE_SEND_FAILED, str(err))
             raise
 
-        self._sent_items[item_id] = {
+        self._sent_items[sent_key] = {
             "title": ebook.display_title,
-            "filename": ebook.filename,
+            "device_name": resolved_device_name,
             "source": source,
         }
         self.sent_count = len(self._sent_items)
         await self.async_save()
         self._delete_send_issues()
-        result = SendResult(item_id=item_id, title=ebook.display_title, sent=True, skipped=False, filename=ebook.filename)
+        result = SendResult(
+            item_id=item_id,
+            title=ebook.display_title,
+            device_name=resolved_device_name,
+            sent=True,
+            skipped=False,
+        )
         self.last_result = result
         self._async_write_state()
         return result
+
+    async def async_send_item(self, item_id: str, *, force: bool = False, source: str = "service") -> SendResult:
+        """Backward-compatible wrapper for older service callers."""
+        return await self.async_send_ebook_to_device(item_id, force=force, source=source)
 
     def _async_write_state(self) -> None:
         """Notify entities that manager state changed."""
         async_dispatcher_send(self.hass, f"{SIGNAL_UPDATED}_{self.entry.entry_id}")
 
-    async def _async_get_ebook_content(self, ebook) -> bytes:
-        """Return ebook bytes from local mapped path or ABS download endpoints."""
-        local = self._local_path_for(ebook.path)
-        if local is not None:
-            return await self.hass.async_add_executor_job(local.read_bytes)
-
-        payloads = await self.client.async_download_candidates(ebook.item_id)
-        if payloads:
-            return payloads[0]
-        raise SendFailed("Could not read ebook locally and no ABS download endpoint returned bytes")
-
-    def _local_path_for(self, abs_path: str | None) -> Path | None:
-        """Map an ABS server path to a HA-local path if configured."""
-        if not abs_path:
-            return None
-        abs_root = self.entry.options.get(CONF_LOCAL_ABS_ROOT)
-        ha_root = self.entry.options.get(CONF_HA_LOCAL_ROOT)
-        if not abs_root or not ha_root:
-            return None
-        try:
-            rel = Path(abs_path).relative_to(Path(abs_root))
-        except ValueError:
-            return None
-        local = Path(ha_root) / rel
-        return local if local.is_file() else None
+    @staticmethod
+    def _sent_key(item_id: str, device_name: str | None = None) -> str:
+        """Return a per-device sent marker key."""
+        return item_id if not device_name else f"{item_id}:{device_name}"
 
     def _create_issue(self, issue_id: str, detail: str) -> None:
         """Create a repair issue for send failures."""
@@ -196,10 +189,8 @@ class AudiobookshelfKindleManager:
 
     def _delete_send_issues(self) -> None:
         """Clear transient send issues after a successful send."""
-        for issue_id in (ISSUE_MISSING_EBOOK, ISSUE_SEND_FAILED, ISSUE_SIZE_LIMIT, ISSUE_UNSUPPORTED_FORMAT):
+        for issue_id in (ISSUE_MISSING_EBOOK, ISSUE_MISSING_DEVICE, ISSUE_SEND_FAILED):
             ir.async_delete_issue(self.hass, DOMAIN, f"{self.entry.entry_id}_{issue_id}")
-
-
 def _extract_item_id(payload: dict[str, Any]) -> str | None:
     """Extract a library item id from common ABS notification shapes."""
     for key in ("libraryItemId", "library_item_id", "itemId", "item_id", "id"):
@@ -212,3 +203,69 @@ def _extract_item_id(payload: dict[str, Any]) -> str | None:
     if isinstance(data, dict):
         return _extract_item_id(data)
     return None
+
+
+def _normalize_event(entry_id: str, event_id: int, item_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize common ABS webhook payloads into stable HA event attributes."""
+    item = _extract_item(payload)
+    media = item.get("media") if isinstance(item.get("media"), dict) else {}
+    metadata = media.get("metadata") if isinstance(media.get("metadata"), dict) else {}
+    source_event = _extract_source_event(payload)
+    event_type = _event_type_from_source(source_event)
+    return {
+        "entry_id": entry_id,
+        "event_id": event_id,
+        "event_type": event_type,
+        "source_event": source_event,
+        "item_id": item_id,
+        "library_id": payload.get("libraryId") or payload.get("library_id") or item.get("libraryId"),
+        "title": metadata.get("title") or item.get("title"),
+        "authors": _extract_authors(metadata),
+        "media_type": media.get("mediaType") or item.get("mediaType"),
+        "has_ebook": bool(media.get("ebookFile") or item.get("ebookFile")),
+    }
+
+
+def _extract_item(payload: dict[str, Any]) -> dict[str, Any]:
+    """Extract an item object from common webhook payload shapes."""
+    for key in ("item", "libraryItem", "library_item"):
+        value = payload.get(key)
+        if isinstance(value, dict):
+            return value
+    data = payload.get("data") or payload.get("payload")
+    if isinstance(data, dict):
+        return _extract_item(data)
+    return {}
+
+
+def _extract_source_event(payload: dict[str, Any]) -> str | None:
+    """Extract the source webhook event name when ABS includes one."""
+    for key in ("event", "eventName", "type", "action"):
+        if payload.get(key):
+            return str(payload[key])
+    data = payload.get("data") or payload.get("payload")
+    if isinstance(data, dict):
+        return _extract_source_event(data)
+    return None
+
+
+def _event_type_from_source(source_event: str | None) -> str:
+    """Map source event labels to integration event types."""
+    if not source_event:
+        return EVENT_LIBRARY_ITEM_RECEIVED
+    normalized = source_event.lower().replace("-", "_").replace(" ", "_")
+    if "update" in normalized or "scan" in normalized:
+        return EVENT_LIBRARY_ITEM_UPDATED
+    if "add" in normalized or "create" in normalized or "new" in normalized:
+        return EVENT_LIBRARY_ITEM_RECEIVED
+    return EVENT_LIBRARY_ITEM_UNKNOWN
+
+
+def _extract_authors(metadata: dict[str, Any]) -> list[str]:
+    """Return author names from ABS metadata."""
+    authors_value = metadata.get("authors") or metadata.get("authorName") or []
+    if isinstance(authors_value, str):
+        return [authors_value]
+    if isinstance(authors_value, list):
+        return [str(author.get("name", author)) for author in authors_value]
+    return []

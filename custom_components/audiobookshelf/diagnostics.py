@@ -1,4 +1,4 @@
-"""Diagnostics for Audiobookshelf Kindle."""
+"""Diagnostics for Audiobookshelf."""
 
 from __future__ import annotations
 
@@ -8,11 +8,10 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     CONF_ABS_TOKEN,
-    CONF_SMTP_PASSWORD,
     DOMAIN,
 )
 
-TO_REDACT = {CONF_ABS_TOKEN, CONF_SMTP_PASSWORD}
+TO_REDACT = {CONF_ABS_TOKEN}
 
 
 async def async_get_config_entry_diagnostics(
@@ -28,4 +27,5 @@ async def async_get_config_entry_diagnostics(
         "skipped_count": manager.skipped_count,
         "failed_count": manager.failed_count,
         "last_result": None if manager.last_result is None else manager.last_result.__dict__,
+        "last_event": manager.last_event,
     }

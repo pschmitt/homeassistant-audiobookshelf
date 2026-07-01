@@ -5,7 +5,7 @@
     "step": {
       "user": {
         "title": "Connect Audiobookshelf",
-        "description": "Enter an Audiobookshelf URL and API token. The token needs access to the library items you want to send.",
+        "description": "Enter an Audiobookshelf URL and API token. The token needs access to the library items and e-reader devices you want to use.",
         "data": {
           "name": "Name",
           "abs_url": "Audiobookshelf URL",
@@ -13,17 +13,11 @@
           "verify_ssl": "Verify SSL certificate"
         }
       },
-      "mail": {
-        "title": "Configure Send to Kindle email",
-        "description": "Amazon must allow the sender address in the Kindle Personal Document settings.",
+      "device": {
+        "title": "Choose default e-reader device",
+        "description": "Audiobookshelf will send ebooks using its own e-reader and email settings. Configure SMTP and e-reader devices in Audiobookshelf, not Home Assistant.",
         "data": {
-          "recipient_email": "Kindle email address",
-          "sender_email": "Sender email address",
-          "smtp_host": "SMTP host",
-          "smtp_port": "SMTP port",
-          "smtp_username": "SMTP username",
-          "smtp_password": "SMTP password",
-          "smtp_starttls": "Use STARTTLS"
+          "device_name": "Default e-reader device"
         }
       },
       "reconfigure": {
@@ -54,13 +48,10 @@
     "step": {
       "init": {
         "title": "Audiobookshelf options",
-        "description": "Keep automatic sending disabled until you have tested the manual send service.",
+        "description": "Automatic sending uses Audiobookshelf's own send-to-device feature and configured e-reader devices.",
         "data": {
-          "auto_send": "Send matching webhook items to Kindle automatically",
-          "accepted_formats": "Accepted ebook formats",
-          "max_attachment_mb": "Maximum attachment size in MB",
-          "local_abs_root": "Audiobookshelf server library root",
-          "ha_local_root": "Home Assistant local library root"
+          "auto_send": "Send webhook items automatically",
+          "device_name": "Default e-reader device"
         }
       }
     }
@@ -83,6 +74,11 @@
         "name": "Webhook path"
       }
     },
+    "event": {
+      "library_item": {
+        "name": "Library item"
+      }
+    },
     "button": {
       "test_connection": {
         "name": "Test connection"
@@ -90,27 +86,53 @@
     }
   },
   "services": {
-    "send_item": {
-      "name": "Send item",
-      "description": "Send an Audiobookshelf library item to the configured Kindle address.",
+    "send_ebook_to_device": {
+      "name": "Send ebook to device",
+      "description": "Ask Audiobookshelf to send a library item's ebook to one of its configured e-reader devices.",
       "fields": {
         "item_id": {
           "name": "Item ID",
           "description": "Audiobookshelf library item ID."
         },
+        "device_name": {
+          "name": "Device name",
+          "description": "Audiobookshelf e-reader device name. If omitted, the integration's default device is used."
+        },
         "force": {
           "name": "Force",
-          "description": "Send even if the item was already marked as sent."
+          "description": "Send even if the item was already marked as sent to this device."
+        }
+      }
+    },
+    "send_item": {
+      "name": "Send item",
+      "description": "Compatibility alias for Send ebook to device.",
+      "fields": {
+        "item_id": {
+          "name": "Item ID",
+          "description": "Audiobookshelf library item ID."
+        },
+        "device_name": {
+          "name": "Device name",
+          "description": "Audiobookshelf e-reader device name. If omitted, the integration's default device is used."
+        },
+        "force": {
+          "name": "Force",
+          "description": "Send even if the item was already marked as sent to this device."
         }
       }
     },
     "reset_sent_item": {
       "name": "Reset sent item",
-      "description": "Remove the sent marker for an Audiobookshelf item.",
+      "description": "Remove the sent marker for an Audiobookshelf item and e-reader device.",
       "fields": {
         "item_id": {
           "name": "Item ID",
           "description": "Audiobookshelf library item ID."
+        },
+        "device_name": {
+          "name": "Device name",
+          "description": "Audiobookshelf e-reader device name. If omitted, the legacy item-only marker is reset."
         }
       }
     }
@@ -125,20 +147,16 @@
       "description": "Home Assistant could not connect to Audiobookshelf: {detail}."
     },
     "send_failed": {
-      "title": "Kindle send failed",
-      "description": "Audiobookshelf could not send the book to Kindle: {detail}."
+      "title": "Audiobookshelf send failed",
+      "description": "Audiobookshelf could not send the ebook to the configured e-reader device: {detail}."
     },
     "missing_ebook": {
       "title": "Audiobookshelf item has no ebook",
       "description": "The triggered Audiobookshelf item does not contain an ebook file: {detail}."
     },
-    "unsupported_format": {
-      "title": "Ebook format is not enabled",
-      "description": "The ebook format is not enabled for sending: {detail}."
-    },
-    "size_limit": {
-      "title": "Ebook exceeds attachment size limit",
-      "description": "The ebook is larger than the configured maximum attachment size: {detail}."
+    "missing_device": {
+      "title": "No e-reader device is configured",
+      "description": "Choose a default e-reader device in the Audiobookshelf integration options or pass device_name to the service call: {detail}."
     }
   }
 }

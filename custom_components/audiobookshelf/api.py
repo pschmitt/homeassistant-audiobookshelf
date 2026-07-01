@@ -7,7 +7,7 @@ from typing import Any
 
 from aiohttp import ClientError, ClientResponseError, ClientSession
 
-from .exceptions import CannotConnect, InvalidAuth
+from .exceptions import CannotConnect, InvalidAuth, SendFailed
 
 
 class AudiobookshelfClient:
@@ -56,6 +56,12 @@ class AudiobookshelfClient:
         """Validate credentials and return server/user information."""
         return await self.async_request("GET", "/api/me")
 
+    async def async_get_ereader_devices(self) -> list[dict[str, Any]]:
+        """Return e-reader devices visible to the authenticated user."""
+        me = await self.async_validate()
+        devices = me.get("ereaderDevices") or []
+        return devices if isinstance(devices, list) else []
+
     async def async_get_status(self) -> dict[str, Any]:
         """Return server status."""
         return await self.async_request("GET", "/api/status")
@@ -64,23 +70,13 @@ class AudiobookshelfClient:
         """Return an ABS library item."""
         return await self.async_request("GET", f"/api/items/{item_id}")
 
-    async def async_download_candidates(self, item_id: str) -> list[bytes]:
-        """Try known ebook download endpoints.
-
-        ABS download endpoints have moved over time and the published API docs are
-        stale. Keep this isolated so unsupported installs produce a clear repair.
-        """
-        candidates = (
-            f"/api/items/{item_id}/ebook",
-            f"/api/items/{item_id}/download",
-            f"/api/items/{item_id}/file",
-        )
-        payloads: list[bytes] = []
-        for path in candidates:
-            try:
-                data = await self.async_request("GET", path)
-            except CannotConnect:
-                continue
-            if isinstance(data, bytes) and data:
-                payloads.append(data)
-        return payloads
+    async def async_send_ebook_to_device(self, item_id: str, device_name: str) -> None:
+        """Ask Audiobookshelf to send an ebook to a configured e-reader device."""
+        try:
+            await self.async_request(
+                "POST",
+                "/api/emails/send-ebook-to-device",
+                json={"libraryItemId": item_id, "deviceName": device_name},
+            )
+        except CannotConnect as err:
+            raise SendFailed(str(err)) from err

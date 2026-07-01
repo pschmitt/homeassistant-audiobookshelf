@@ -1,4 +1,4 @@
-"""Config flow for Audiobookshelf Kindle."""
+"""Config flow for Audiobookshelf."""
 
 from __future__ import annotations
 
@@ -13,9 +13,6 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
-    NumberSelector,
-    NumberSelectorConfig,
-    NumberSelectorMode,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -28,26 +25,12 @@ from .api import AudiobookshelfClient
 from .const import (
     CONF_ABS_TOKEN,
     CONF_ABS_URL,
-    CONF_ACCEPTED_FORMATS,
     CONF_AUTO_SEND,
-    CONF_HA_LOCAL_ROOT,
-    CONF_LOCAL_ABS_ROOT,
-    CONF_MAX_ATTACHMENT_MB,
-    CONF_RECIPIENT_EMAIL,
-    CONF_SENDER_EMAIL,
-    CONF_SMTP_HOST,
-    CONF_SMTP_PASSWORD,
-    CONF_SMTP_PORT,
-    CONF_SMTP_STARTTLS,
-    CONF_SMTP_USERNAME,
+    CONF_DEVICE_NAME,
     CONF_VERIFY_SSL,
     CONF_WEBHOOK_ID,
-    DEFAULT_ACCEPTED_FORMATS,
     DEFAULT_AUTO_SEND,
-    DEFAULT_MAX_ATTACHMENT_MB,
     DEFAULT_NAME,
-    DEFAULT_SMTP_PORT,
-    DEFAULT_SMTP_STARTTLS,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
 )
@@ -71,6 +54,25 @@ async def _async_validate(hass: HomeAssistant, data: dict[str, Any]) -> dict[str
         await session.close()
 
 
+async def _async_get_ereader_devices(hass: HomeAssistant, data: dict[str, Any]) -> list[str]:
+    """Return available ABS e-reader device names."""
+    session = async_create_clientsession(
+        hass,
+        verify_ssl=data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+    )
+    try:
+        client = AudiobookshelfClient(
+            session=session,
+            base_url=data[CONF_ABS_URL],
+            token=data[CONF_ABS_TOKEN],
+        )
+        devices = await client.async_get_ereader_devices()
+    finally:
+        await session.close()
+    names = [str(device["name"]) for device in devices if isinstance(device, dict) and device.get("name")]
+    return sorted(names)
+
+
 def _connection_schema(defaults: dict[str, Any], *, token_optional: bool = False) -> vol.Schema:
     """Build connection schema."""
     token_key = vol.Optional(CONF_ABS_TOKEN) if token_optional else vol.Required(CONF_ABS_TOKEN)
@@ -83,52 +85,46 @@ def _connection_schema(defaults: dict[str, Any], *, token_optional: bool = False
     )
 
 
-def _mail_schema(defaults: dict[str, Any], *, password_optional: bool = False) -> vol.Schema:
-    """Build mail schema."""
-    password_key = vol.Optional(CONF_SMTP_PASSWORD) if password_optional else vol.Required(CONF_SMTP_PASSWORD)
+def _device_schema(defaults: dict[str, Any], devices: list[str]) -> vol.Schema:
+    """Build e-reader device schema."""
+    selector = (
+        SelectSelector(SelectSelectorConfig(options=devices, mode=SelectSelectorMode.DROPDOWN))
+        if devices
+        else TextSelector()
+    )
     return vol.Schema(
         {
-            vol.Required(CONF_RECIPIENT_EMAIL, default=defaults.get(CONF_RECIPIENT_EMAIL, "")): TextSelector(),
-            vol.Required(CONF_SENDER_EMAIL, default=defaults.get(CONF_SENDER_EMAIL, "")): TextSelector(),
-            vol.Required(CONF_SMTP_HOST, default=defaults.get(CONF_SMTP_HOST, "")): TextSelector(),
-            vol.Required(CONF_SMTP_PORT, default=defaults.get(CONF_SMTP_PORT, DEFAULT_SMTP_PORT)): NumberSelector(NumberSelectorConfig(min=1, max=65535, mode=NumberSelectorMode.BOX)),
-            vol.Optional(CONF_SMTP_USERNAME, default=defaults.get(CONF_SMTP_USERNAME, "")): TextSelector(),
-            password_key: TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
-            vol.Required(CONF_SMTP_STARTTLS, default=defaults.get(CONF_SMTP_STARTTLS, DEFAULT_SMTP_STARTTLS)): BooleanSelector(),
+            vol.Optional(CONF_DEVICE_NAME, default=defaults.get(CONF_DEVICE_NAME, "")): selector,
         }
     )
 
 
-def _options_schema(defaults: dict[str, Any]) -> vol.Schema:
+def _options_schema(defaults: dict[str, Any], devices: list[str]) -> vol.Schema:
     """Build options schema."""
     return vol.Schema(
         {
             vol.Required(CONF_AUTO_SEND, default=defaults.get(CONF_AUTO_SEND, DEFAULT_AUTO_SEND)): BooleanSelector(),
-            vol.Required(CONF_ACCEPTED_FORMATS, default=defaults.get(CONF_ACCEPTED_FORMATS, DEFAULT_ACCEPTED_FORMATS)): SelectSelector(
-                SelectSelectorConfig(options=["epub", "pdf"], multiple=True, mode=SelectSelectorMode.DROPDOWN)
-            ),
-            vol.Required(CONF_MAX_ATTACHMENT_MB, default=defaults.get(CONF_MAX_ATTACHMENT_MB, DEFAULT_MAX_ATTACHMENT_MB)): NumberSelector(NumberSelectorConfig(min=1, max=200, mode=NumberSelectorMode.BOX)),
-            vol.Optional(CONF_LOCAL_ABS_ROOT, default=defaults.get(CONF_LOCAL_ABS_ROOT, "")): TextSelector(),
-            vol.Optional(CONF_HA_LOCAL_ROOT, default=defaults.get(CONF_HA_LOCAL_ROOT, "")): TextSelector(),
+            **_device_schema(defaults, devices).schema,
         }
     )
 
 
-class AudiobookshelfKindleConfigFlow(ConfigFlow, domain=DOMAIN):
+class AudiobookshelfConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle config flow."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self) -> None:
         """Initialize the flow."""
         self._data: dict[str, Any] = {}
+        self._devices: list[str] = []
         self._title = DEFAULT_NAME
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> AudiobookshelfKindleOptionsFlow:
+    def async_get_options_flow(config_entry: ConfigEntry) -> AudiobookshelfOptionsFlow:
         """Return options flow."""
-        return AudiobookshelfKindleOptionsFlow(config_entry)
+        return AudiobookshelfOptionsFlow(config_entry)
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle initial setup."""
@@ -147,31 +143,27 @@ class AudiobookshelfKindleConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
                 self._title = data.pop(CONF_NAME) or DEFAULT_NAME
                 self._data.update(data)
-                return await self.async_step_mail()
+                self._devices = await _async_get_ereader_devices(self.hass, self._data)
+                return await self.async_step_device()
 
         schema = _connection_schema({CONF_NAME: DEFAULT_NAME, **(user_input or {})})
         schema = schema.extend({vol.Optional(CONF_NAME, default=DEFAULT_NAME): TextSelector()})
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
-    async def async_step_mail(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Collect Send to Kindle SMTP settings."""
+    async def async_step_device(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Collect the default Audiobookshelf e-reader device."""
         if user_input is not None:
             data = dict(user_input)
-            data[CONF_SMTP_PORT] = int(data[CONF_SMTP_PORT])
-            data[CONF_WEBHOOK_ID] = f"abs_kindle_{secrets.token_urlsafe(24)}"
-            self._data.update(data)
+            self._data[CONF_WEBHOOK_ID] = f"abs_{secrets.token_urlsafe(24)}"
             return self.async_create_entry(
                 title=self._title,
                 data=self._data,
                 options={
+                    CONF_DEVICE_NAME: data.get(CONF_DEVICE_NAME, ""),
                     CONF_AUTO_SEND: DEFAULT_AUTO_SEND,
-                    CONF_ACCEPTED_FORMATS: DEFAULT_ACCEPTED_FORMATS,
-                    CONF_MAX_ATTACHMENT_MB: DEFAULT_MAX_ATTACHMENT_MB,
-                    CONF_LOCAL_ABS_ROOT: "",
-                    CONF_HA_LOCAL_ROOT: "",
                 },
             )
-        return self.async_show_form(step_id="mail", data_schema=_mail_schema({}))
+        return self.async_show_form(step_id="device", data_schema=_device_schema({}, self._devices))
 
     async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle reconfiguration."""
@@ -223,7 +215,7 @@ class AudiobookshelfKindleConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
 
-class AudiobookshelfKindleOptionsFlow(OptionsFlow):
+class AudiobookshelfOptionsFlow(OptionsFlow):
     """Handle options."""
 
     def __init__(self, entry: ConfigEntry) -> None:
@@ -234,12 +226,20 @@ class AudiobookshelfKindleOptionsFlow(OptionsFlow):
         """Manage options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=dict(user_input))
+        try:
+            devices = await _async_get_ereader_devices(
+                self.hass,
+                {
+                    CONF_ABS_URL: self._entry.data[CONF_ABS_URL],
+                    CONF_ABS_TOKEN: self._entry.data[CONF_ABS_TOKEN],
+                    CONF_VERIFY_SSL: self._entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+                },
+            )
+        except (CannotConnect, InvalidAuth):
+            devices = []
         defaults = {
             CONF_AUTO_SEND: DEFAULT_AUTO_SEND,
-            CONF_ACCEPTED_FORMATS: DEFAULT_ACCEPTED_FORMATS,
-            CONF_MAX_ATTACHMENT_MB: DEFAULT_MAX_ATTACHMENT_MB,
-            CONF_LOCAL_ABS_ROOT: "",
-            CONF_HA_LOCAL_ROOT: "",
+            CONF_DEVICE_NAME: "",
             **dict(self._entry.options),
         }
-        return self.async_show_form(step_id="init", data_schema=_options_schema(defaults))
+        return self.async_show_form(step_id="init", data_schema=_options_schema(defaults, devices))

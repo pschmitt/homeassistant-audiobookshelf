@@ -1,4 +1,4 @@
-"""Audiobookshelf Kindle integration."""
+"""Audiobookshelf integration."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from .const import (
     PLATFORMS,
 )
 from .exceptions import CannotConnect, InvalidAuth
-from .manager import AudiobookshelfKindleManager
+from .manager import AudiobookshelfManager
 from .services import async_register_services, async_unregister_services
 from .webhook import async_register_webhook
 
@@ -38,14 +38,14 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Audiobookshelf Kindle from a config entry."""
+    """Set up Audiobookshelf from a config entry."""
     session = async_create_clientsession(hass, verify_ssl=entry.data[CONF_VERIFY_SSL])
     client = AudiobookshelfClient(
         session=session,
         base_url=entry.data[CONF_ABS_URL],
         token=entry.data[CONF_ABS_TOKEN],
     )
-    manager = AudiobookshelfKindleManager(hass, entry, client)
+    manager = AudiobookshelfManager(hass, entry, client)
     await manager.async_load()
 
     try:
@@ -73,7 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload an Audiobookshelf Kindle config entry."""
+    """Unload an Audiobookshelf config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         data = hass.data[DOMAIN].pop(entry.entry_id, {})
@@ -92,12 +92,30 @@ async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old entry data."""
     data = dict(entry.data)
+    options = dict(entry.options)
     if CONF_URL in data and CONF_ABS_URL not in data:
         data[CONF_ABS_URL] = data.pop(CONF_URL)
     if CONF_TOKEN in data and CONF_ABS_TOKEN not in data:
         data[CONF_ABS_TOKEN] = data.pop(CONF_TOKEN)
-    if data != entry.data:
-        hass.config_entries.async_update_entry(entry, data=data)
+    for key in (
+        "recipient_email",
+        "sender_email",
+        "smtp_host",
+        "smtp_port",
+        "smtp_username",
+        "smtp_password",
+        "smtp_starttls",
+    ):
+        data.pop(key, None)
+    for key in (
+        "accepted_formats",
+        "max_attachment_mb",
+        "local_abs_root",
+        "ha_local_root",
+    ):
+        options.pop(key, None)
+    if data != entry.data or options != entry.options or entry.version < 2:
+        hass.config_entries.async_update_entry(entry, data=data, options=options, version=2)
     return True
 
 

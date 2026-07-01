@@ -1,4 +1,4 @@
-"""Sensors for Audiobookshelf Kindle."""
+"""Sensors for Audiobookshelf."""
 
 from __future__ import annotations
 
@@ -26,10 +26,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensors."""
     manager = hass.data[DOMAIN][entry.entry_id]["manager"]
-    async_add_entities(AudiobookshelfKindleSensor(entry, manager, desc) for desc in SENSORS)
+    async_add_entities(AudiobookshelfSensor(entry, manager, desc) for desc in SENSORS)
 
 
-class AudiobookshelfKindleSensor(SensorEntity):
+class AudiobookshelfSensor(SensorEntity):
     """A diagnostic integration sensor."""
 
     _attr_has_entity_name = True
@@ -44,7 +44,7 @@ class AudiobookshelfKindleSensor(SensorEntity):
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": entry.title,
             "manufacturer": "Audiobookshelf",
-            "model": "Send to Kindle bridge",
+            "model": "Audiobookshelf server",
         }
 
     @property
