@@ -92,30 +92,12 @@ async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old entry data."""
     data = dict(entry.data)
-    options = dict(entry.options)
     if CONF_URL in data and CONF_ABS_URL not in data:
         data[CONF_ABS_URL] = data.pop(CONF_URL)
     if CONF_TOKEN in data and CONF_ABS_TOKEN not in data:
         data[CONF_ABS_TOKEN] = data.pop(CONF_TOKEN)
-    for key in (
-        "recipient_email",
-        "sender_email",
-        "smtp_host",
-        "smtp_port",
-        "smtp_username",
-        "smtp_password",
-        "smtp_starttls",
-    ):
-        data.pop(key, None)
-    for key in (
-        "accepted_formats",
-        "max_attachment_mb",
-        "local_abs_root",
-        "ha_local_root",
-    ):
-        options.pop(key, None)
-    if data != entry.data or options != entry.options or entry.version < 2:
-        hass.config_entries.async_update_entry(entry, data=data, options=options, version=2)
+    if data != entry.data or entry.version < 2:
+        hass.config_entries.async_update_entry(entry, data=data, version=2)
     return True
 
 
