@@ -1,3 +1,144 @@
 {
-  "title": "Audiobookshelf"
+  "title": "Audiobookshelf",
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Connect Audiobookshelf",
+        "description": "Enter an Audiobookshelf URL and API token. The token needs access to the library items you want to send.",
+        "data": {
+          "name": "Name",
+          "abs_url": "Audiobookshelf URL",
+          "abs_token": "API token",
+          "verify_ssl": "Verify SSL certificate"
+        }
+      },
+      "mail": {
+        "title": "Configure Send to Kindle email",
+        "description": "Amazon must allow the sender address in the Kindle Personal Document settings.",
+        "data": {
+          "recipient_email": "Kindle email address",
+          "sender_email": "Sender email address",
+          "smtp_host": "SMTP host",
+          "smtp_port": "SMTP port",
+          "smtp_username": "SMTP username",
+          "smtp_password": "SMTP password",
+          "smtp_starttls": "Use STARTTLS"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Audiobookshelf",
+        "data": {
+          "abs_url": "Audiobookshelf URL",
+          "abs_token": "API token",
+          "verify_ssl": "Verify SSL certificate"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Update Audiobookshelf token",
+        "data": {
+          "abs_token": "API token"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to Audiobookshelf.",
+      "invalid_auth": "Audiobookshelf rejected the API token.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This Audiobookshelf account is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Audiobookshelf options",
+        "description": "Keep automatic sending disabled until you have tested the manual send service.",
+        "data": {
+          "auto_send": "Send matching webhook items to Kindle automatically",
+          "accepted_formats": "Accepted ebook formats",
+          "max_attachment_mb": "Maximum attachment size in MB",
+          "local_abs_root": "Audiobookshelf server library root",
+          "ha_local_root": "Home Assistant local library root"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sent_count": {
+        "name": "Sent books"
+      },
+      "skipped_count": {
+        "name": "Skipped books"
+      },
+      "failed_count": {
+        "name": "Failed sends"
+      },
+      "last_result": {
+        "name": "Last send result"
+      },
+      "webhook_path": {
+        "name": "Webhook path"
+      }
+    },
+    "button": {
+      "test_connection": {
+        "name": "Test connection"
+      }
+    }
+  },
+  "services": {
+    "send_item": {
+      "name": "Send item",
+      "description": "Send an Audiobookshelf library item to the configured Kindle address.",
+      "fields": {
+        "item_id": {
+          "name": "Item ID",
+          "description": "Audiobookshelf library item ID."
+        },
+        "force": {
+          "name": "Force",
+          "description": "Send even if the item was already marked as sent."
+        }
+      }
+    },
+    "reset_sent_item": {
+      "name": "Reset sent item",
+      "description": "Remove the sent marker for an Audiobookshelf item.",
+      "fields": {
+        "item_id": {
+          "name": "Item ID",
+          "description": "Audiobookshelf library item ID."
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "Audiobookshelf authentication failed",
+      "description": "Audiobookshelf rejected the configured API token: {detail}. Reconfigure the integration with a valid token."
+    },
+    "connectivity_failed": {
+      "title": "Audiobookshelf is not reachable",
+      "description": "Home Assistant could not connect to Audiobookshelf: {detail}."
+    },
+    "send_failed": {
+      "title": "Kindle send failed",
+      "description": "Audiobookshelf could not send the book to Kindle: {detail}."
+    },
+    "missing_ebook": {
+      "title": "Audiobookshelf item has no ebook",
+      "description": "The triggered Audiobookshelf item does not contain an ebook file: {detail}."
+    },
+    "unsupported_format": {
+      "title": "Ebook format is not enabled",
+      "description": "The ebook format is not enabled for sending: {detail}."
+    },
+    "size_limit": {
+      "title": "Ebook exceeds attachment size limit",
+      "description": "The ebook is larger than the configured maximum attachment size: {detail}."
+    }
+  }
 }
