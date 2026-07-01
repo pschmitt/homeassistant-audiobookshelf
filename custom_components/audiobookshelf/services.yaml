@@ -1,0 +1,17 @@
+send_item:
+  fields:
+    item_id:
+      required: true
+      selector:
+        text:
+    force:
+      required: false
+      default: false
+      selector:
+        boolean:
+reset_sent_item:
+  fields:
+    item_id:
+      required: true
+      selector:
+        text:

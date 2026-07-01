@@ -1,0 +1,19 @@
+{
+  "domain": "audiobookshelf",
+  "name": "Audiobookshelf",
+  "after_dependencies": [
+    "webhook"
+  ],
+  "codeowners": [
+    "@pschmitt"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/pschmitt/homeassistant-audiobookshelf",
+  "integration_type": "service",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/pschmitt/homeassistant-audiobookshelf/issues",
+  "loggers": [
+    "custom_components.audiobookshelf"
+  ],
+  "version": "0.1.0"
+}
