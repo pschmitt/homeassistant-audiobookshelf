@@ -15,7 +15,7 @@
       },
       "device": {
         "title": "Choose default e-reader device",
-        "description": "Audiobookshelf will send ebooks using its own e-reader and email settings. Configure SMTP and e-reader devices in Audiobookshelf, not Home Assistant.",
+        "description": "Audiobookshelf can send ebooks using its own e-reader and email settings. Configure SMTP and e-reader devices in Audiobookshelf, not Home Assistant.",
         "data": {
           "device_name": "Default e-reader device"
         }
@@ -48,7 +48,7 @@
     "step": {
       "init": {
         "title": "Audiobookshelf options",
-        "description": "Automatic sending uses Audiobookshelf's own send-to-device feature and configured e-reader devices.",
+        "description": "Automatic sending can use Audiobookshelf's own send-to-device feature and configured e-reader devices.",
         "data": {
           "auto_send": "Send webhook items automatically",
           "device_name": "Default e-reader device"

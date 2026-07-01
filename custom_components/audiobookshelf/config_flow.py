@@ -87,14 +87,17 @@ def _connection_schema(defaults: dict[str, Any], *, token_optional: bool = False
 
 def _device_schema(defaults: dict[str, Any], devices: list[str]) -> vol.Schema:
     """Build e-reader device schema."""
-    selector = (
-        SelectSelector(SelectSelectorConfig(options=devices, mode=SelectSelectorMode.DROPDOWN))
-        if devices
-        else TextSelector()
-    )
+    selected = defaults.get(CONF_DEVICE_NAME, "")
+    options = list(devices)
+    if selected and selected not in options:
+        options.insert(0, selected)
+    if not options:
+        return vol.Schema({})
     return vol.Schema(
         {
-            vol.Optional(CONF_DEVICE_NAME, default=defaults.get(CONF_DEVICE_NAME, "")): selector,
+            vol.Optional(CONF_DEVICE_NAME, default=selected): SelectSelector(
+                SelectSelectorConfig(options=options, mode=SelectSelectorMode.DROPDOWN)
+            ),
         }
     )
 
