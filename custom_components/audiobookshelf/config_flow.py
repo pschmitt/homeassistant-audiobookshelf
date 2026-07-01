@@ -225,7 +225,10 @@ class AudiobookshelfOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage options."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=dict(user_input))
+            return self.async_create_entry(
+                title="",
+                data={**dict(self._entry.options), **user_input},
+            )
         defaults = {
             CONF_AUTO_SEND: DEFAULT_AUTO_SEND,
             **dict(self._entry.options),
