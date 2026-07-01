@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.event import async_track_time_interval
 
 from .api import AudiobookshelfClient
 from .const import (
@@ -21,11 +22,11 @@ from .const import (
     ISSUE_AUTH,
     ISSUE_CONNECTIVITY,
     PLATFORMS,
+    SCAN_INTERVAL,
 )
 from .exceptions import CannotConnect, InvalidAuth
 from .manager import AudiobookshelfManager
 from .services import async_register_services, async_unregister_services
-from .webhook import async_register_webhook
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -68,7 +69,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     await async_register_services(hass)
-    async_register_webhook(hass, entry, manager)
+
+    async def _async_poll(now: Any) -> None:
+        """Periodically refresh ABS data and detect newly added books."""
+        del now
+        try:
+            await manager.async_refresh()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Scheduled Audiobookshelf refresh failed", exc_info=True)
+
+    entry.async_on_unload(async_track_time_interval(hass, _async_poll, SCAN_INTERVAL))
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

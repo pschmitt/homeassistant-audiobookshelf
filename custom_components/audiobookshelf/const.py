@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from homeassistant.const import Platform
 
 DOMAIN = "audiobookshelf"
 PLATFORMS = [Platform.SENSOR, Platform.BUTTON, Platform.EVENT, Platform.SELECT]
 
+SCAN_INTERVAL = timedelta(minutes=10)
+
 CONF_ABS_URL = "abs_url"
 CONF_ABS_TOKEN = "abs_token"
 CONF_DEVICE_NAME = "device_name"
-CONF_WEBHOOK_ID = "webhook_id"
 CONF_VERIFY_SSL = "verify_ssl"
 
 CONF_AUTO_SEND = "auto_send"

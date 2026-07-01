@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import CONF_WEBHOOK_ID, DOMAIN, SIGNAL_UPDATED
+from .const import DOMAIN, SIGNAL_UPDATED
 
 SENSORS = (
     SensorEntityDescription(key="server_status", translation_key="server_status", icon="mdi:server", entity_category=EntityCategory.DIAGNOSTIC),
@@ -22,7 +22,6 @@ SENSORS = (
     SensorEntityDescription(key="skipped_count", translation_key="skipped_count", icon="mdi:book-cancel"),
     SensorEntityDescription(key="failed_count", translation_key="failed_count", icon="mdi:book-alert"),
     SensorEntityDescription(key="last_result", translation_key="last_result", icon="mdi:book-sync"),
-    SensorEntityDescription(key="webhook_path", translation_key="webhook_path", icon="mdi:webhook"),
 )
 
 
@@ -34,6 +33,38 @@ async def async_setup_entry(
     """Set up sensors."""
     manager = hass.data[DOMAIN][entry.entry_id]["manager"]
     async_add_entities(AudiobookshelfSensor(entry, manager, desc) for desc in SENSORS)
+    library_entities: dict[tuple[str, str], AudiobookshelfLibrarySensor] = {}
+
+    async def async_sync_library_entities() -> None:
+        """Add and remove per-library sensors as ABS libraries change."""
+        wanted = {
+            (library_id, key)
+            for library_id in manager.book_libraries
+            for key in ("recently_added_book", "library_items")
+        }
+        for entity_key in set(library_entities) - wanted:
+            await library_entities.pop(entity_key).async_remove()
+        new_entities = []
+        for library_id, key in wanted - set(library_entities):
+            entity = AudiobookshelfLibrarySensor(entry, manager, library_id, key)
+            library_entities[(library_id, key)] = entity
+            new_entities.append(entity)
+        if new_entities:
+            async_add_entities(new_entities)
+
+    await async_sync_library_entities()
+
+    @callback
+    def handle_manager_update() -> None:
+        hass.async_create_task(async_sync_library_entities())
+
+    entry.async_on_unload(
+        async_dispatcher_connect(
+            hass,
+            f"{SIGNAL_UPDATED}_{entry.entry_id}",
+            handle_manager_update,
+        )
+    )
 
 
 class AudiobookshelfSensor(SensorEntity):
@@ -77,8 +108,6 @@ class AudiobookshelfSensor(SensorEntity):
             return self._manager.skipped_count
         if self.entity_description.key == "failed_count":
             return self._manager.failed_count
-        if self.entity_description.key == "webhook_path":
-            return f"/api/webhook/{self._entry.data[CONF_WEBHOOK_ID]}"
         if self._manager.last_result is None:
             return "idle"
         result = self._manager.last_result
@@ -91,15 +120,6 @@ class AudiobookshelfSensor(SensorEntity):
     @property
     def extra_state_attributes(self):
         """Return extra attributes."""
-        if self.entity_description.key == "webhook_path":
-            path = f"/api/webhook/{self._entry.data[CONF_WEBHOOK_ID]}"
-            external_url = self.hass.config.external_url
-            internal_url = self.hass.config.internal_url
-            return {
-                "path": path,
-                "external_url": None if external_url is None else f"{external_url.rstrip('/')}{path}",
-                "internal_url": None if internal_url is None else f"{internal_url.rstrip('/')}{path}",
-            }
         if self.entity_description.key == "server_status":
             return dict(self._manager.server_status)
         if self.entity_description.key == "ereader_devices":
@@ -127,6 +147,74 @@ class AudiobookshelfSensor(SensorEntity):
     def _handle_coordinator_update(self) -> None:
         """Write state when manager data changes."""
         self.async_write_ha_state()
+
+
+class AudiobookshelfLibrarySensor(SensorEntity):
+    """A per-library diagnostic sensor."""
+
+    _attr_has_entity_name = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, entry: ConfigEntry, manager, library_id: str, key: str) -> None:
+        """Initialize the per-library sensor."""
+        self._entry = entry
+        self._manager = manager
+        self._library_id = library_id
+        self._key = key
+        self._attr_unique_id = f"{entry.entry_id}_{key}_{library_id}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.title,
+            "manufacturer": "Audiobookshelf",
+            "model": "Audiobookshelf server",
+        }
+        self._attr_icon = "mdi:book-plus" if key == "recently_added_book" else "mdi:bookshelf"
+
+    @property
+    def name(self) -> str:
+        """Return the sensor name."""
+        library_name = self._library_name()
+        if self._key == "recently_added_book":
+            return f"Recently added book {library_name}"
+        return f"Library items {library_name}"
+
+    @property
+    def native_value(self):
+        """Return sensor value."""
+        book = self._manager.recently_added_books_by_library.get(self._library_id) or {}
+        if self._key == "recently_added_book":
+            return book.get("title") or book.get("item_id") or "none"
+        return book.get("item_count")
+
+    @property
+    def extra_state_attributes(self):
+        """Return extra attributes."""
+        book = self._manager.recently_added_books_by_library.get(self._library_id) or {}
+        return {
+            **book,
+            "library_id": self._library_id,
+            "library_name": self._library_name(),
+        }
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to manager updates."""
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_UPDATED}_{self._entry.entry_id}",
+                self._handle_coordinator_update,
+            )
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Write state when manager data changes."""
+        self.async_write_ha_state()
+
+    def _library_name(self) -> str:
+        """Return the current library name."""
+        library = self._manager.book_libraries.get(self._library_id, {})
+        return str(library.get("name") or self._library_id)
 
 
 def _server_status(status: dict) -> str:

@@ -49,8 +49,17 @@ class AudiobookshelfSelect(SelectEntity):
 
     @property
     def options(self) -> list[str]:
-        """Return selectable e-reader devices."""
-        return self._manager.ereader_device_names
+        """Return selectable e-reader devices.
+
+        Include the configured default even if it is stale/unknown so Home
+        Assistant has a valid current option; it disappears once a real device
+        is selected.
+        """
+        names = list(self._manager.ereader_device_names)
+        default_device = self._manager.default_device_name
+        if default_device and default_device not in names:
+            names.insert(0, default_device)
+        return names
 
     @property
     def current_option(self) -> str | None:

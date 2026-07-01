@@ -30,4 +30,6 @@ async def async_get_config_entry_diagnostics(
         "last_event": manager.last_event,
         "server_status": manager.server_status,
         "ereader_devices": manager.ereader_device_names,
+        "book_libraries": manager.book_libraries,
+        "recently_added_books_by_library": manager.recently_added_books_by_library,
     }

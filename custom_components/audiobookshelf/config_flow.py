@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import secrets
 from typing import Any
 
 import voluptuous as vol
@@ -28,7 +27,6 @@ from .const import (
     CONF_AUTO_SEND,
     CONF_DEVICE_NAME,
     CONF_VERIFY_SSL,
-    CONF_WEBHOOK_ID,
     DEFAULT_AUTO_SEND,
     DEFAULT_NAME,
     DEFAULT_VERIFY_SSL,
@@ -157,7 +155,6 @@ class AudiobookshelfConfigFlow(ConfigFlow, domain=DOMAIN):
         """Collect the default Audiobookshelf e-reader device."""
         if user_input is not None:
             data = dict(user_input)
-            self._data[CONF_WEBHOOK_ID] = f"abs_{secrets.token_urlsafe(24)}"
             return self.async_create_entry(
                 title=self._title,
                 data=self._data,

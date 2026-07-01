@@ -28,14 +28,20 @@ from .const import (
     STORAGE_VERSION,
     SIGNAL_UPDATED,
 )
-from .exceptions import CannotConnect, MissingDevice, MissingEbook, SendFailed
+from .exceptions import (
+    AudiobookshelfError,
+    CannotConnect,
+    MissingDevice,
+    MissingEbook,
+    SendFailed,
+)
 from .models import SendResult, normalize_ebook
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class AudiobookshelfManager:
-    """Coordinate webhook events, ABS metadata, and e-reader device sends."""
+    """Coordinate ABS polling, library item events, and e-reader device sends."""
 
     def __init__(
         self,
@@ -51,7 +57,10 @@ class AudiobookshelfManager:
         self.last_event: dict[str, Any] | None = None
         self.server_status: dict[str, Any] = {}
         self.ereader_devices: list[dict[str, Any]] = []
+        self.book_libraries: dict[str, dict[str, Any]] = {}
+        self.recently_added_books_by_library: dict[str, dict[str, Any] | None] = {}
         self.last_refresh = None
+        self._recent_item_ids: dict[str, str] = {}
         self._event_id = 0
         self.sent_count = 0
         self.skipped_count = 0
@@ -66,15 +75,79 @@ class AudiobookshelfManager:
         self.sent_count = len(self._sent_items)
 
     async def async_refresh(self) -> None:
-        """Refresh server status and visible e-reader devices."""
+        """Refresh server status, e-reader devices, and library contents.
+
+        Newly added books are detected by comparing each library's most recently
+        added item against the previous poll; ABS has no library-item webhook.
+        """
         try:
             self.server_status = await self.client.async_get_status()
         except CannotConnect:
             _LOGGER.debug("Could not refresh Audiobookshelf server status", exc_info=True)
             self.server_status = {}
         self.ereader_devices = await self.client.async_get_ereader_devices()
+        libraries = await self.client.async_get_libraries()
+        self.book_libraries = {
+            str(library["id"]): library
+            for library in libraries
+            if isinstance(library, dict) and library.get("id") and library.get("mediaType") == "book"
+        }
+        recently_added: dict[str, dict[str, Any] | None] = {}
+        for library_id, library in self.book_libraries.items():
+            library_name = library.get("name")
+            try:
+                item = await self.client.async_get_recently_added_book_for_library(library_id, library_name)
+            except CannotConnect:
+                _LOGGER.debug("Could not refresh Audiobookshelf recently added book for %s", library_id, exc_info=True)
+                item = None
+            recently_added[library_id] = _normalize_recently_added_book(item, library)
+        self.recently_added_books_by_library = recently_added
         self.last_refresh = dt_util.utcnow()
+        await self._async_detect_new_books(recently_added)
         self._async_write_state()
+
+    async def _async_detect_new_books(
+        self,
+        recently_added: dict[str, dict[str, Any] | None],
+    ) -> None:
+        """Fire an event (and optionally auto-send) for newly added books.
+
+        The first observation of a library only seeds the baseline, so an
+        integration restart never re-fires or re-sends existing items.
+        """
+        for library_id, book in recently_added.items():
+            item_id = (book or {}).get("item_id")
+            if not item_id:
+                continue
+            item_id = str(item_id)
+            previous = self._recent_item_ids.get(library_id)
+            self._recent_item_ids[library_id] = item_id
+            if previous is None or item_id == previous:
+                continue
+            await self._async_handle_new_book(item_id)
+
+    async def _async_handle_new_book(self, item_id: str) -> None:
+        """Publish a library item event and auto-send when enabled."""
+        self._event_id += 1
+        item_detail = await self._async_fetch_item_detail(item_id)
+        event = _normalize_event(
+            self.entry.entry_id,
+            self._event_id,
+            item_id,
+            {},
+            item_detail=item_detail,
+            libraries=self.book_libraries,
+            base_url=self.client.base_url,
+            source_event="library_item_added",
+        )
+        self.last_event = event
+        self.hass.bus.async_fire(EVENT_ITEM_RECEIVED, event)
+        if not self.entry.options.get(CONF_AUTO_SEND, False):
+            return
+        try:
+            await self.async_send_ebook_to_device(item_id, source="poll")
+        except AudiobookshelfError:
+            _LOGGER.debug("Auto-send failed for Audiobookshelf item %s", item_id, exc_info=True)
 
     async def async_save(self) -> None:
         """Persist sent item state."""
@@ -91,27 +164,22 @@ class AudiobookshelfManager:
             await self.async_save()
         return existed
 
-    async def async_handle_webhook(self, payload: dict[str, Any]) -> SendResult | None:
-        """Handle an ABS webhook payload."""
-        item_id = _extract_item_id(payload)
-        if not item_id:
-            _LOGGER.debug("Ignoring Audiobookshelf webhook without item id: %s", payload)
+    async def _async_fetch_item_detail(self, item_id: str) -> dict[str, Any] | None:
+        """Best-effort fetch of full item metadata to enrich library item events.
+
+        Any failure is non-fatal: the event still fires with whatever data the
+        poll already gathered.
+        """
+        try:
+            item = await self.client.async_get_item(item_id)
+        except AudiobookshelfError:
+            _LOGGER.debug(
+                "Could not fetch Audiobookshelf item %s for event enrichment",
+                item_id,
+                exc_info=True,
+            )
             return None
-        self._event_id += 1
-        event = _normalize_event(self.entry.entry_id, self._event_id, item_id, payload)
-        self.last_event = event
-        self.hass.bus.async_fire(
-            EVENT_ITEM_RECEIVED,
-            event,
-        )
-        self._async_write_state()
-        if not self.entry.options.get(CONF_AUTO_SEND, False):
-            result = SendResult(item_id=item_id, title=item_id, device_name=None, sent=False, skipped=True, reason="auto_send_disabled")
-            self.last_result = result
-            self.skipped_count += 1
-            self._async_write_state()
-            return result
-        return await self.async_send_ebook_to_device(item_id, source="webhook")
+        return item if isinstance(item, dict) else None
 
     async def async_send_ebook_to_device(
         self,
@@ -181,14 +249,33 @@ class AudiobookshelfManager:
         return await self.async_send_ebook_to_device(item_id, force=force, source=source)
 
     async def async_send_last_ebook_to_device(self) -> SendResult:
-        """Send the most recently received webhook item to the default e-reader device."""
-        if self.last_event is None or not self.last_event.get("item_id"):
-            raise SendFailed("No Audiobookshelf library item has been received yet")
-        return await self.async_send_ebook_to_device(
-            str(self.last_event["item_id"]),
-            force=True,
-            source="button",
-        )
+        """Send the latest ebook to the default e-reader device.
+
+        Prefers the most recently detected event item; otherwise falls back to
+        the newest recently added book across libraries, so the button works even
+        before any new-book event has fired.
+        """
+        item_id: str | None = None
+        if self.last_event and self.last_event.get("item_id"):
+            item_id = str(self.last_event["item_id"])
+        else:
+            item_id = self._most_recently_added_item_id()
+        if not item_id:
+            raise SendFailed("No Audiobookshelf library item is available yet")
+        return await self.async_send_ebook_to_device(item_id, force=True, source="button")
+
+    def _most_recently_added_item_id(self) -> str | None:
+        """Return the newest recently added book id, preferring items with an ebook."""
+        candidates = [
+            book
+            for book in self.recently_added_books_by_library.values()
+            if book and book.get("item_id")
+        ]
+        if not candidates:
+            return None
+        pool = [book for book in candidates if book.get("has_ebook")] or candidates
+        newest = max(pool, key=lambda book: book.get("added_at") or 0)
+        return str(newest["item_id"])
 
     async def async_set_default_device(self, device_name: str) -> None:
         """Persist the default e-reader device selected from the entity."""
@@ -204,12 +291,12 @@ class AudiobookshelfManager:
 
     @property
     def ereader_device_names(self) -> list[str]:
-        """Return visible e-reader device names."""
-        names = [str(device["name"]) for device in self.ereader_devices if isinstance(device, dict) and device.get("name")]
-        default_device = self.default_device_name
-        if default_device and default_device not in names:
-            names.insert(0, default_device)
-        return names
+        """Return configured e-reader device names."""
+        return [
+            str(device["name"])
+            for device in self.ereader_devices
+            if isinstance(device, dict) and device.get("name")
+        ]
 
     def _async_write_state(self) -> None:
         """Notify entities that manager state changed."""
@@ -237,43 +324,141 @@ class AudiobookshelfManager:
         """Clear transient send issues after a successful send."""
         for issue_id in (ISSUE_MISSING_EBOOK, ISSUE_MISSING_DEVICE, ISSUE_SEND_FAILED):
             ir.async_delete_issue(self.hass, DOMAIN, f"{self.entry.entry_id}_{issue_id}")
-def _extract_item_id(payload: dict[str, Any]) -> str | None:
-    """Extract a library item id from common ABS notification shapes."""
-    for key in ("libraryItemId", "library_item_id", "itemId", "item_id", "id"):
-        if payload.get(key):
-            return str(payload[key])
-    item = payload.get("item") or payload.get("libraryItem") or payload.get("library_item")
-    if isinstance(item, dict) and item.get("id"):
-        return str(item["id"])
-    data = payload.get("data") or payload.get("payload")
-    if isinstance(data, dict):
-        return _extract_item_id(data)
-    return None
 
 
-def _normalize_event(entry_id: str, event_id: int, item_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """Normalize common ABS webhook payloads into stable HA event attributes."""
-    item = _extract_item(payload)
+def _normalize_event(
+    entry_id: str,
+    event_id: int,
+    item_id: str,
+    payload: dict[str, Any],
+    *,
+    item_detail: dict[str, Any] | None = None,
+    libraries: dict[str, dict[str, Any]] | None = None,
+    base_url: str | None = None,
+    source_event: str | None = None,
+) -> dict[str, Any]:
+    """Normalize an ABS library item into stable HA event attributes.
+
+    ``item_detail`` (fetched from ``/api/items/{id}``) is preferred over the raw
+    ``payload`` when available, so automations get consistent metadata. Pass
+    ``source_event`` to label the event origin explicitly.
+    """
+    item = item_detail if isinstance(item_detail, dict) and item_detail else _extract_item(payload)
     media = item.get("media") if isinstance(item.get("media"), dict) else {}
     metadata = media.get("metadata") if isinstance(media.get("metadata"), dict) else {}
-    source_event = _extract_source_event(payload)
+    source_event = source_event or _extract_source_event(payload)
     event_type = _event_type_from_source(source_event)
+
+    library_id = (
+        item.get("libraryId")
+        or payload.get("libraryId")
+        or payload.get("library_id")
+    )
+    library_name = _resolve_library_name(library_id, libraries)
+    ebook_file = media.get("ebookFile") or item.get("ebookFile")
+
     return {
         "entry_id": entry_id,
         "event_id": event_id,
         "event_type": event_type,
         "source_event": source_event,
         "item_id": item_id,
-        "library_id": payload.get("libraryId") or payload.get("library_id") or item.get("libraryId"),
+        "library_id": library_id,
+        "library_name": library_name,
         "title": metadata.get("title") or item.get("title"),
+        "subtitle": metadata.get("subtitle"),
         "authors": _extract_authors(metadata),
+        "narrators": _extract_str_list(metadata.get("narrators")),
+        "series": _extract_series(metadata),
+        "genres": _extract_str_list(metadata.get("genres")),
+        "published_year": metadata.get("publishedYear"),
+        "publisher": metadata.get("publisher"),
+        "description": metadata.get("description"),
         "media_type": media.get("mediaType") or item.get("mediaType"),
-        "has_ebook": bool(media.get("ebookFile") or item.get("ebookFile")),
+        "has_ebook": bool(ebook_file),
+        "ebook_format": _extract_ebook_format(ebook_file, media),
+        "duration": media.get("duration"),
+        "added_at": item.get("addedAt") or item.get("createdAt"),
+        "updated_at": item.get("updatedAt"),
+        "cover_url": _build_item_url(base_url, item_id, cover=True),
+        "item_url": _build_item_url(base_url, item_id),
     }
 
 
+def _resolve_library_name(
+    library_id: Any,
+    libraries: dict[str, dict[str, Any]] | None,
+) -> str | None:
+    """Resolve a human-friendly library name from cached libraries."""
+    if not library_id or not libraries:
+        return None
+    library = libraries.get(str(library_id))
+    if isinstance(library, dict):
+        name = library.get("name")
+        return str(name) if name else None
+    return None
+
+
+def _extract_str_list(value: Any) -> list[str]:
+    """Normalize a list of names/strings from ABS metadata."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        result = []
+        for entry in value:
+            if isinstance(entry, dict):
+                name = entry.get("name")
+                if name:
+                    result.append(str(name))
+            elif entry:
+                result.append(str(entry))
+        return result
+    return []
+
+
+def _extract_series(metadata: dict[str, Any]) -> list[str]:
+    """Return series descriptors ("Name #Sequence") from ABS metadata."""
+    series = metadata.get("series")
+    if isinstance(series, list):
+        result = []
+        for entry in series:
+            if isinstance(entry, dict):
+                name = entry.get("name")
+                if not name:
+                    continue
+                sequence = entry.get("sequence")
+                result.append(f"{name} #{sequence}" if sequence else str(name))
+            elif entry:
+                result.append(str(entry))
+        return result
+    name = metadata.get("seriesName")
+    if isinstance(name, str) and name:
+        return [name]
+    return []
+
+
+def _extract_ebook_format(ebook_file: Any, media: dict[str, Any]) -> str | None:
+    """Return the ebook file format when available."""
+    if isinstance(ebook_file, dict):
+        fmt = ebook_file.get("ebookFormat") or ebook_file.get("format")
+        if fmt:
+            return str(fmt)
+    fmt = media.get("ebookFormat")
+    return str(fmt) if fmt else None
+
+
+def _build_item_url(base_url: str | None, item_id: str, *, cover: bool = False) -> str | None:
+    """Build a deep link to an ABS item (or its cover)."""
+    if not base_url or not item_id:
+        return None
+    base = base_url.rstrip("/")
+    if cover:
+        return f"{base}/api/items/{item_id}/cover"
+    return f"{base}/item/{item_id}"
+
+
 def _extract_item(payload: dict[str, Any]) -> dict[str, Any]:
-    """Extract an item object from common webhook payload shapes."""
+    """Extract an item object from common payload shapes."""
     for key in ("item", "libraryItem", "library_item"):
         value = payload.get(key)
         if isinstance(value, dict):
@@ -285,7 +470,7 @@ def _extract_item(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _extract_source_event(payload: dict[str, Any]) -> str | None:
-    """Extract the source webhook event name when ABS includes one."""
+    """Extract the source event name when the payload includes one."""
     for key in ("event", "eventName", "type", "action"):
         if payload.get(key):
             return str(payload[key])
@@ -315,3 +500,28 @@ def _extract_authors(metadata: dict[str, Any]) -> list[str]:
     if isinstance(authors_value, list):
         return [str(author.get("name", author)) for author in authors_value]
     return []
+
+
+def _normalize_recently_added_book(item: dict[str, Any] | None, library: dict[str, Any]) -> dict[str, Any] | None:
+    """Normalize an ABS library item for the recently added book sensor."""
+    if not item:
+        return {
+            "library_id": library.get("id"),
+            "library_name": library.get("name"),
+            "title": None,
+            "item_id": None,
+            "item_count": None,
+        }
+    media = item.get("media") if isinstance(item.get("media"), dict) else {}
+    metadata = media.get("metadata") if isinstance(media.get("metadata"), dict) else {}
+    return {
+        "item_id": item.get("id"),
+        "library_id": item.get("_libraryId") or item.get("libraryId") or library.get("id"),
+        "library_name": item.get("_libraryName") or library.get("name"),
+        "title": metadata.get("title") or item.get("title") or item.get("id"),
+        "authors": _extract_authors(metadata),
+        "media_type": media.get("mediaType") or item.get("mediaType"),
+        "added_at": item.get("addedAt") or item.get("createdAt"),
+        "item_count": item.get("_libraryTotal"),
+        "has_ebook": bool(media.get("ebookFile") or item.get("ebookFile")),
+    }

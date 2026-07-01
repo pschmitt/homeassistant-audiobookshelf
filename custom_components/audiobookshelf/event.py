@@ -71,7 +71,7 @@ class AudiobookshelfEvent(EventEntity):
 
     @callback
     def _handle_manager_update(self) -> None:
-        """Publish the latest normalized webhook event."""
+        """Publish the latest normalized library item event."""
         if self._manager.last_event is None:
             return
         event = dict(self._manager.last_event)

@@ -51,7 +51,7 @@
         "title": "Audiobookshelf options",
         "description": "Automatic sending can use Audiobookshelf's own send-to-device feature. Choose the default e-reader device from the Audiobookshelf select entity.",
         "data": {
-          "auto_send": "Send webhook items automatically"
+          "auto_send": "Send newly added books automatically"
         }
       }
     }
@@ -69,9 +69,6 @@
       },
       "last_result": {
         "name": "Last send result"
-      },
-      "webhook_path": {
-        "name": "Webhook path"
       },
       "server_status": {
         "name": "Server status"

@@ -2,29 +2,30 @@
 
 <img src="logo.png" alt="Audiobookshelf logo" width="300">
 
-Home Assistant custom integration for Audiobookshelf. The first implemented feature exposes Audiobookshelf webhooks as Home Assistant events and can ask Audiobookshelf to send ebook items to one of its configured e-reader devices.
+Home Assistant custom integration for Audiobookshelf. It polls each book library for newly added items, exposes them as Home Assistant events, and can ask Audiobookshelf to send ebook items to one of its configured e-reader devices.
 
 ## Features
 
 - UI config flow, reconfigure flow, reauth flow, options flow, diagnostics, repairs.
-- Secure webhook endpoint for Audiobookshelf notifications.
-- `event.audiobookshelf_library_item` for normalized library item webhook events.
-- Sensors for server status/version, e-reader devices, default e-reader device, last library item, send counters, and webhook URL.
+- Polls Audiobookshelf on an interval to detect newly added books (Audiobookshelf has no library-item webhook/notification event).
+- `event.audiobookshelf_library_item` fires when a new book is detected, with normalized attributes.
+- Sensors for server status/version, e-reader devices, default e-reader device, last library item, and send counters.
+- Per-library diagnostic sensors for item counts and most recently added books. These are added and removed as Audiobookshelf libraries appear or disappear.
 - `select.audiobookshelf_default_e_reader_device` to choose the default Audiobookshelf e-reader device from devices visible to the configured user.
-- Buttons to refresh cached server/device data and send the last received ebook to the selected default e-reader device.
+- Buttons to refresh cached server/device data and send the last detected ebook to the selected default e-reader device.
 - Duplicate suppression backed by Home Assistant storage.
 - Manual `audiobookshelf.send_ebook_to_device` and `audiobookshelf.reset_sent_item` services.
 - Uses Audiobookshelf's own e-reader and email settings. Home Assistant does not store SMTP credentials or send mail directly.
 
-## Audiobookshelf notification URL
+## New book detection
 
-After setup, use the configured webhook path sensor:
-
-```text
-https://<home-assistant>/api/webhook/<webhook_id>
-```
-
-The integration accepts common ABS notification payload shapes containing `libraryItemId`, `itemId`, `id`, or a nested `item.id` / `libraryItem.id`.
+Audiobookshelf's notification system has no "library item added" event (only
+podcast episode downloads, backups, and RSS failures), so this integration
+**polls** each book library's most recently added item on an interval. When a
+library's newest item changes, `event.audiobookshelf_library_item` fires and, if
+enabled, the book is auto-sent to the default e-reader device. The first poll
+after startup only establishes a baseline, so a restart never re-fires or
+re-sends existing books.
 
 The event entity emits these event types:
 
@@ -32,14 +33,29 @@ The event entity emits these event types:
 - `library_item_updated`
 - `library_item`
 
-Event attributes are normalized for automations:
+Event attributes are normalized for automations. The integration fetches the
+full library item from Audiobookshelf so these attributes are populated:
 
 - `item_id`
 - `library_id`
+- `library_name`
 - `title`
+- `subtitle`
 - `authors`
+- `narrators`
+- `series`
+- `genres`
+- `published_year`
+- `publisher`
+- `description`
 - `media_type`
 - `has_ebook`
+- `ebook_format`
+- `duration`
+- `added_at`
+- `updated_at`
+- `cover_url`
+- `item_url`
 - `source_event`
 
 ## Send to e-reader device
