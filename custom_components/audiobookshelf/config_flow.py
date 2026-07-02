@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
+    SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -22,6 +23,8 @@ from homeassistant.helpers.selector import (
 
 from .api import AudiobookshelfClient
 from .const import (
+    ALL_DEVICES,
+    ALL_DEVICES_LABEL,
     CONF_ABS_TOKEN,
     CONF_ABS_URL,
     CONF_AUTO_SEND,
@@ -98,13 +101,12 @@ def _connection_schema(defaults: dict[str, Any], *, token_optional: bool = False
 
 
 def _device_schema(defaults: dict[str, Any], devices: list[str]) -> vol.Schema:
-    """Build e-reader device schema."""
-    selected = defaults.get(CONF_DEVICE_NAME, "")
-    options = list(devices)
-    if selected and selected not in options:
-        options.insert(0, selected)
-    if not options:
-        return vol.Schema({})
+    """Build e-reader device schema, offering "all devices" alongside real ones."""
+    selected = defaults.get(CONF_DEVICE_NAME) or ALL_DEVICES
+    options = [SelectOptionDict(value=ALL_DEVICES, label=ALL_DEVICES_LABEL)]
+    options.extend(SelectOptionDict(value=name, label=name) for name in devices if name != ALL_DEVICES)
+    if selected not in (ALL_DEVICES, *devices):
+        options.append(SelectOptionDict(value=selected, label=selected))
     return vol.Schema(
         {
             vol.Optional(CONF_DEVICE_NAME, default=selected): SelectSelector(
@@ -224,7 +226,7 @@ class AudiobookshelfConfigFlow(ConfigFlow, domain=DOMAIN):
                 title=self._title,
                 data=self._data,
                 options={
-                    CONF_DEVICE_NAME: data.get(CONF_DEVICE_NAME, ""),
+                    CONF_DEVICE_NAME: data.get(CONF_DEVICE_NAME, ALL_DEVICES),
                     CONF_AUTO_SEND: DEFAULT_AUTO_SEND,
                 },
             )

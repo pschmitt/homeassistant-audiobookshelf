@@ -13,6 +13,8 @@ from homeassistant.helpers.storage import Store
 
 from .api import AudiobookshelfClient
 from .const import (
+    ALL_DEVICES,
+    ALL_DEVICES_LABEL,
     CONF_AUTO_SEND,
     CONF_DEVICE_NAME,
     DOMAIN,
@@ -199,9 +201,23 @@ class AudiobookshelfManager:
         await self._store.async_save(stored)
 
     async def async_reset_sent_item(self, item_id: str, device_name: str | None = None) -> bool:
-        """Remove a sent marker so an item can be resent."""
-        key = self._sent_key(item_id, device_name)
-        existed = self._sent_items.pop(key, None) is not None
+        """Remove sent marker(s) so an item can be resent.
+
+        Omitting ``device_name`` (or passing ``ALL_DEVICES``) resets every
+        stored marker for this item, matching the "send to all" default. This
+        scans stored keys rather than currently known device names, so it also
+        clears markers left behind by a device that has since been renamed or
+        removed from the server.
+        """
+        if not device_name or device_name == ALL_DEVICES:
+            prefix = f"{item_id}:"
+            keys = [key for key in self._sent_items if key == item_id or key.startswith(prefix)]
+        else:
+            keys = [self._sent_key(item_id, device_name)]
+        existed = False
+        for key in keys:
+            if self._sent_items.pop(key, None) is not None:
+                existed = True
         if existed:
             self.sent_count = len(self._sent_items)
             await self.async_save()
@@ -232,16 +248,16 @@ class AudiobookshelfManager:
         force: bool = False,
         source: str = "service",
     ) -> SendResult:
-        """Ask Audiobookshelf to send an item to an e-reader device."""
-        resolved_device_name = device_name or self.entry.options.get(CONF_DEVICE_NAME)
-        if not resolved_device_name:
-            err = MissingDevice("No Audiobookshelf e-reader device is configured")
-            self.failed_count += 1
-            await self._async_notify(
-                NOTIFY_EVENT_SEND_FAILED,
-                {**self._item_notify_context(None, item_id), "device": "", "reason": str(err)},
-            )
-            raise err
+        """Ask Audiobookshelf to send an item to an e-reader device.
+
+        ``device_name`` (or the configured default, or the fallback when
+        nothing is configured) may be ``ALL_DEVICES`` to fan the send out to
+        every e-reader device known to the server.
+        """
+        resolved_device_name = device_name or self.entry.options.get(CONF_DEVICE_NAME) or ALL_DEVICES
+
+        if resolved_device_name == ALL_DEVICES:
+            return await self._async_send_ebook_to_all_devices(item_id, force=force, source=source)
 
         sent_key = self._sent_key(item_id, resolved_device_name)
         if not force and sent_key in self._sent_items:
@@ -298,6 +314,73 @@ class AudiobookshelfManager:
             NOTIFY_EVENT_EBOOK_SENT,
             {**self._item_notify_context(item, item_id), "device": resolved_device_name},
         )
+        return result
+
+    async def _async_send_ebook_to_all_devices(
+        self,
+        item_id: str,
+        *,
+        force: bool,
+        source: str,
+    ) -> SendResult:
+        """Fan a send out to every e-reader device known to the server.
+
+        Reuses the single-device path per device, so per-device dedup,
+        notifications, and counters all apply exactly as they would for an
+        individual send; one device failing doesn't stop the rest. Results are
+        folded into a single ``SendResult`` for callers (button, service
+        response) that expect one outcome.
+        """
+        device_names = self.ereader_device_names
+        if not device_names:
+            err = MissingDevice("No Audiobookshelf e-reader devices are configured")
+            self.failed_count += 1
+            await self._async_notify(
+                NOTIFY_EVENT_SEND_FAILED,
+                {**self._item_notify_context(None, item_id), "device": ALL_DEVICES_LABEL, "reason": str(err)},
+            )
+            raise err
+
+        title = item_id
+        sent = skipped = failed = 0
+        last_error: AudiobookshelfError | None = None
+        for name in device_names:
+            try:
+                result = await self.async_send_ebook_to_device(
+                    item_id, device_name=name, force=force, source=source
+                )
+            except AudiobookshelfError as err:
+                failed += 1
+                last_error = err
+                continue
+            title = result.title
+            if result.sent:
+                sent += 1
+            else:
+                skipped += 1
+
+        if failed and not sent and not skipped:
+            raise SendFailed(str(last_error) if last_error else f"Failed to send to all {failed} device(s)")
+
+        if sent and failed:
+            reason = f"{failed} of {len(device_names)} device(s) failed"
+        elif not sent and skipped and failed:
+            reason = f"{skipped} already sent, {failed} failed"
+        elif not sent and skipped:
+            reason = "already_sent"
+        else:
+            reason = None
+
+        result = SendResult(
+            item_id=item_id,
+            title=title,
+            device_name=ALL_DEVICES,
+            sent=bool(sent),
+            skipped=not sent and bool(skipped),
+            reason=reason,
+        )
+        self.last_result = result
+        self._async_write_state()
         return result
 
     async def async_send_item(self, item_id: str, *, force: bool = False, source: str = "service") -> SendResult:

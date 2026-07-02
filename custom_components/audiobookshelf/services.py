@@ -11,7 +11,14 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import async_set_service_schema
 
-from .const import DOMAIN, SERVICE_RESET_SENT_ITEM, SERVICE_SEND_EBOOK_TO_DEVICE, SERVICE_SEND_ITEM
+from .const import (
+    ALL_DEVICES,
+    ALL_DEVICES_LABEL,
+    DOMAIN,
+    SERVICE_RESET_SENT_ITEM,
+    SERVICE_SEND_EBOOK_TO_DEVICE,
+    SERVICE_SEND_ITEM,
+)
 from .exceptions import AudiobookshelfError
 
 SEND_ITEM_SCHEMA = vol.Schema(
@@ -98,12 +105,15 @@ async def async_register_services(hass: HomeAssistant) -> None:
     )
 
 
-def _aggregate_choices(hass: HomeAssistant) -> tuple[list[dict[str, str]], list[str]]:
-    """Collect ebook choices and e-reader device names across all entries."""
+def _aggregate_choices(hass: HomeAssistant) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Collect ebook choices and e-reader device choices across all entries.
+
+    Device choices always include the "all devices" fan-out option first.
+    """
     item_choices: list[dict[str, str]] = []
-    device_names: list[str] = []
+    device_choices: list[dict[str, str]] = [{"label": ALL_DEVICES_LABEL, "value": ALL_DEVICES}]
     seen_items: set[str] = set()
-    seen_devices: set[str] = set()
+    seen_devices: set[str] = {ALL_DEVICES}
     for data in hass.data.get(DOMAIN, {}).values():
         manager = data.get("manager") if isinstance(data, dict) else None
         if manager is None:
@@ -118,8 +128,8 @@ def _aggregate_choices(hass: HomeAssistant) -> tuple[list[dict[str, str]], list[
             if name in seen_devices:
                 continue
             seen_devices.add(name)
-            device_names.append(name)
-    return item_choices, device_names
+            device_choices.append({"label": name, "value": name})
+    return item_choices, device_choices
 
 
 def _dropdown_selector(options: list[Any]) -> dict[str, Any]:
@@ -142,10 +152,10 @@ def _dropdown_selector(options: list[Any]) -> dict[str, Any]:
 
 def _build_fields(hass: HomeAssistant, *, include_force: bool) -> dict[str, Any]:
     """Build service field descriptions with live book/device dropdowns."""
-    item_choices, device_names = _aggregate_choices(hass)
+    item_choices, device_choices = _aggregate_choices(hass)
     fields: dict[str, Any] = {
         "item_id": {"required": True, "selector": _dropdown_selector(item_choices)},
-        "device_name": {"required": False, "selector": _dropdown_selector(device_names)},
+        "device_name": {"required": False, "selector": _dropdown_selector(device_choices)},
     }
     if include_force:
         fields["force"] = {"required": False, "default": False, "selector": {"boolean": {}}}

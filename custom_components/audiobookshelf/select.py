@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, SIGNAL_UPDATED
+from .const import ALL_DEVICES, DOMAIN, SIGNAL_UPDATED
 
 SELECTS = (
     SelectEntityDescription(
@@ -49,22 +49,26 @@ class AudiobookshelfSelect(SelectEntity):
 
     @property
     def options(self) -> list[str]:
-        """Return selectable e-reader devices.
+        """Return selectable e-reader devices, plus the "all devices" option.
 
         Include the configured default even if it is stale/unknown so Home
         Assistant has a valid current option; it disappears once a real device
         is selected.
         """
-        names = list(self._manager.ereader_device_names)
+        names = [name for name in self._manager.ereader_device_names if name != ALL_DEVICES]
         default_device = self._manager.default_device_name
-        if default_device and default_device not in names:
+        if default_device and default_device != ALL_DEVICES and default_device not in names:
             names.insert(0, default_device)
-        return names
+        return [ALL_DEVICES, *names]
 
     @property
     def current_option(self) -> str | None:
-        """Return the selected default e-reader device."""
-        return self._manager.default_device_name
+        """Return the selected default e-reader device.
+
+        Falls back to "all devices", which is also what the manager uses when
+        no device is configured.
+        """
+        return self._manager.default_device_name or ALL_DEVICES
 
     async def async_select_option(self, option: str) -> None:
         """Select the default e-reader device."""

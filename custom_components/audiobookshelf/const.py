@@ -17,6 +17,11 @@ CONF_ABS_TOKEN = "abs_token"
 CONF_DEVICE_NAME = "device_name"
 CONF_VERIFY_SSL = "verify_ssl"
 
+# Sentinel CONF_DEVICE_NAME/device_name value meaning "every configured e-reader
+# device", not a real Audiobookshelf device name.
+ALL_DEVICES = "all"
+ALL_DEVICES_LABEL = "All devices"
+
 CONF_AUTO_SEND = "auto_send"
 
 CONF_NOTIFY_TARGETS = "notify_targets"

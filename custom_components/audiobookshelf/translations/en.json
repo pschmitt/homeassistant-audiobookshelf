@@ -15,7 +15,7 @@
       },
       "device": {
         "title": "Choose default e-reader device",
-        "description": "Audiobookshelf can send ebooks using its own e-reader and email settings. Configure SMTP and e-reader devices in Audiobookshelf, not Home Assistant.",
+        "description": "Audiobookshelf can send ebooks using its own e-reader and email settings. Configure SMTP and e-reader devices in Audiobookshelf, not Home Assistant. Choose \"All devices\" to send new books to every configured e-reader.",
         "data": {
           "device_name": "Default e-reader device"
         }
@@ -123,7 +123,10 @@
     },
     "select": {
       "default_ereader_device": {
-        "name": "Default e-reader device"
+        "name": "Default e-reader device",
+        "state": {
+          "all": "All devices"
+        }
       }
     }
   },
@@ -138,7 +141,7 @@
         },
         "device_name": {
           "name": "Device name",
-          "description": "E-reader device. Choose from the list of configured devices, or enter a name. If omitted, the integration's default device is used."
+          "description": "E-reader device. Choose from the list of configured devices, \"All devices\" to send to every one, or enter a name. If omitted, the integration's default device is used."
         },
         "force": {
           "name": "Force",
@@ -156,7 +159,7 @@
         },
         "device_name": {
           "name": "Device name",
-          "description": "E-reader device. Choose from the list of configured devices, or enter a name. If omitted, the integration's default device is used."
+          "description": "E-reader device. Choose from the list of configured devices, \"All devices\" to send to every one, or enter a name. If omitted, the integration's default device is used."
         },
         "force": {
           "name": "Force",
@@ -174,7 +177,7 @@
         },
         "device_name": {
           "name": "Device name",
-          "description": "E-reader device. Choose from the list, or enter a name. If omitted, the legacy item-only marker is reset."
+          "description": "E-reader device. Choose from the list, \"All devices\" to reset every device's marker, or enter a name. If omitted, every device's marker is reset."
         }
       }
     }
