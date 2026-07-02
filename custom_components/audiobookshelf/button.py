@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -12,7 +13,7 @@ from .const import DOMAIN
 from .exceptions import AudiobookshelfError
 
 BUTTONS = (
-    ButtonEntityDescription(key="refresh_data", translation_key="refresh_data", icon="mdi:refresh"),
+    ButtonEntityDescription(key="refresh_data", translation_key="refresh_data", icon="mdi:refresh", entity_category=EntityCategory.DIAGNOSTIC),
     ButtonEntityDescription(key="send_last_ebook_to_device", translation_key="send_last_ebook_to_device", icon="mdi:book-arrow-right"),
 )
 
