@@ -9,7 +9,7 @@ from homeassistant.const import Platform
 DOMAIN = "audiobookshelf"
 PLATFORMS = [Platform.SENSOR, Platform.BUTTON, Platform.EVENT, Platform.SELECT]
 
-SCAN_INTERVAL = timedelta(minutes=10)
+SCAN_INTERVAL = timedelta(minutes=5)
 
 CONF_ABS_URL = "abs_url"
 CONF_ABS_TOKEN = "abs_token"

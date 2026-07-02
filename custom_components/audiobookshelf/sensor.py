@@ -18,10 +18,10 @@ SENSORS = (
     SensorEntityDescription(key="default_ereader_device", translation_key="default_ereader_device", icon="mdi:star-cog"),
     SensorEntityDescription(key="last_library_item", translation_key="last_library_item", icon="mdi:book-open-page-variant"),
     SensorEntityDescription(key="last_refresh", translation_key="last_refresh", device_class=SensorDeviceClass.TIMESTAMP, entity_category=EntityCategory.DIAGNOSTIC),
-    SensorEntityDescription(key="sent_count", translation_key="sent_count", icon="mdi:book-check"),
-    SensorEntityDescription(key="skipped_count", translation_key="skipped_count", icon="mdi:book-cancel"),
-    SensorEntityDescription(key="failed_count", translation_key="failed_count", icon="mdi:book-alert"),
-    SensorEntityDescription(key="last_result", translation_key="last_result", icon="mdi:book-sync"),
+    SensorEntityDescription(key="sent_count", translation_key="sent_count", icon="mdi:book-check", entity_category=EntityCategory.DIAGNOSTIC),
+    SensorEntityDescription(key="skipped_count", translation_key="skipped_count", icon="mdi:book-cancel", entity_category=EntityCategory.DIAGNOSTIC),
+    SensorEntityDescription(key="failed_count", translation_key="failed_count", icon="mdi:book-alert", entity_category=EntityCategory.DIAGNOSTIC),
+    SensorEntityDescription(key="last_result", translation_key="last_result", icon="mdi:book-sync", entity_category=EntityCategory.DIAGNOSTIC),
 )
 
 
