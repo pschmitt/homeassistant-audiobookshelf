@@ -36,6 +36,7 @@ from .exceptions import (
     SendFailed,
 )
 from .models import SendResult, normalize_ebook
+from .services import async_update_service_descriptions
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ class AudiobookshelfManager:
         self.last_event: dict[str, Any] | None = None
         self.server_status: dict[str, Any] = {}
         self.ereader_devices: list[dict[str, Any]] = []
+        self.ebook_items: list[dict[str, Any]] = []
         self.book_libraries: dict[str, dict[str, Any]] = {}
         self.recently_added_books_by_library: dict[str, dict[str, Any] | None] = {}
         self.last_refresh = None
@@ -102,9 +104,49 @@ class AudiobookshelfManager:
                 item = None
             recently_added[library_id] = _normalize_recently_added_book(item, library)
         self.recently_added_books_by_library = recently_added
+        await self._async_refresh_ebook_catalog()
         self.last_refresh = dt_util.utcnow()
         await self._async_detect_new_books(recently_added)
         self._async_write_state()
+        async_update_service_descriptions(self.hass)
+
+    async def _async_refresh_ebook_catalog(self) -> None:
+        """Build the catalog of sendable books across book libraries.
+
+        Only items that carry an ebook file can be sent to an e-reader, so the
+        catalog is filtered accordingly; it backs the ``item_id`` service
+        dropdown. A failed library fetch is non-fatal and just omits that
+        library's books from this refresh.
+        """
+        catalog: list[dict[str, Any]] = []
+        for library_id, library in self.book_libraries.items():
+            try:
+                items = await self.client.async_get_library_items(library_id)
+            except CannotConnect:
+                _LOGGER.debug(
+                    "Could not fetch Audiobookshelf items for library %s",
+                    library_id,
+                    exc_info=True,
+                )
+                continue
+            library_name = library.get("name")
+            for item in items:
+                if not isinstance(item, dict) or not item.get("id"):
+                    continue
+                media = item.get("media") if isinstance(item.get("media"), dict) else {}
+                if not (media.get("ebookFormat") or media.get("ebookFile")):
+                    continue
+                metadata = media.get("metadata") if isinstance(media.get("metadata"), dict) else {}
+                catalog.append(
+                    {
+                        "item_id": str(item["id"]),
+                        "title": str(metadata.get("title") or item.get("title") or item["id"]),
+                        "authors": _extract_authors(metadata),
+                        "library_name": library_name,
+                    }
+                )
+        catalog.sort(key=lambda book: book["title"].casefold())
+        self.ebook_items = catalog
 
     async def _async_detect_new_books(
         self,
@@ -297,6 +339,18 @@ class AudiobookshelfManager:
             for device in self.ereader_devices
             if isinstance(device, dict) and device.get("name")
         ]
+
+    @property
+    def ebook_choices(self) -> list[dict[str, str]]:
+        """Return ``{label, value}`` dropdown choices for sendable books."""
+        choices: list[dict[str, str]] = []
+        for book in self.ebook_items:
+            label = book["title"]
+            authors = book.get("authors")
+            if authors:
+                label = f"{label} — {', '.join(authors)}"
+            choices.append({"label": label, "value": book["item_id"]})
+        return choices
 
     def _async_write_state(self) -> None:
         """Notify entities that manager state changed."""

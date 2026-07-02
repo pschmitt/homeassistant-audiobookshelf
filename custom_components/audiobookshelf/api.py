@@ -138,6 +138,23 @@ class AudiobookshelfClient:
         item["_libraryTotal"] = total
         return item
 
+    async def async_get_library_items(
+        self,
+        library_id: str,
+        limit: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Return items for a library, title-sorted (``limit=0`` returns all)."""
+        query = urlencode(
+            {
+                "limit": limit,
+                "page": 0,
+                "sort": "media.metadata.title",
+            }
+        )
+        payload = await self.async_request("GET", f"/api/libraries/{library_id}/items?{query}")
+        results = payload.get("results") if isinstance(payload, dict) else []
+        return results if isinstance(results, list) else []
+
     async def async_get_item(self, item_id: str) -> dict[str, Any]:
         """Return an ABS library item."""
         return await self.async_request("GET", f"/api/items/{item_id}")

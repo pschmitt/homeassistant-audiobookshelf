@@ -26,7 +26,11 @@ from .const import (
 )
 from .exceptions import CannotConnect, InvalidAuth
 from .manager import AudiobookshelfManager
-from .services import async_register_services, async_unregister_services
+from .services import (
+    async_register_services,
+    async_unregister_services,
+    async_update_service_descriptions,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -69,6 +73,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     await async_register_services(hass)
+    # Populate the book / e-reader dropdowns now that the service is registered
+    # and this entry's manager (with its refreshed catalog) is in hass.data.
+    async_update_service_descriptions(hass)
 
     async def _async_poll(now: Any) -> None:
         """Periodically refresh ABS data and detect newly added books."""

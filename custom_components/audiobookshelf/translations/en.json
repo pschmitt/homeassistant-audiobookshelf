@@ -109,11 +109,11 @@
       "fields": {
         "item_id": {
           "name": "Item ID",
-          "description": "Audiobookshelf library item ID."
+          "description": "Book to send. Choose from the list of available ebooks, or enter a library item ID."
         },
         "device_name": {
           "name": "Device name",
-          "description": "Audiobookshelf e-reader device name. If omitted, the integration's default device is used."
+          "description": "E-reader device. Choose from the list of configured devices, or enter a name. If omitted, the integration's default device is used."
         },
         "force": {
           "name": "Force",
@@ -127,11 +127,11 @@
       "fields": {
         "item_id": {
           "name": "Item ID",
-          "description": "Audiobookshelf library item ID."
+          "description": "Book to send. Choose from the list of available ebooks, or enter a library item ID."
         },
         "device_name": {
           "name": "Device name",
-          "description": "Audiobookshelf e-reader device name. If omitted, the integration's default device is used."
+          "description": "E-reader device. Choose from the list of configured devices, or enter a name. If omitted, the integration's default device is used."
         },
         "force": {
           "name": "Force",
@@ -145,11 +145,11 @@
       "fields": {
         "item_id": {
           "name": "Item ID",
-          "description": "Audiobookshelf library item ID."
+          "description": "Book whose sent marker to reset. Choose from the list, or enter a library item ID."
         },
         "device_name": {
           "name": "Device name",
-          "description": "Audiobookshelf e-reader device name. If omitted, the legacy item-only marker is reset."
+          "description": "E-reader device. Choose from the list, or enter a name. If omitted, the legacy item-only marker is reset."
         }
       }
     }
