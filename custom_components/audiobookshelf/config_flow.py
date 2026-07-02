@@ -26,11 +26,23 @@ from .const import (
     CONF_ABS_URL,
     CONF_AUTO_SEND,
     CONF_DEVICE_NAME,
+    CONF_NOTIFY_EVENTS,
+    CONF_NOTIFY_MESSAGE_BOOK_ADDED,
+    CONF_NOTIFY_MESSAGE_EBOOK_SENT,
+    CONF_NOTIFY_MESSAGE_SEND_FAILED,
+    CONF_NOTIFY_TARGETS,
+    CONF_NOTIFY_TITLE,
     CONF_VERIFY_SSL,
     DEFAULT_AUTO_SEND,
     DEFAULT_NAME,
+    DEFAULT_NOTIFY_EVENTS,
+    DEFAULT_NOTIFY_MESSAGE_BOOK_ADDED,
+    DEFAULT_NOTIFY_MESSAGE_EBOOK_SENT,
+    DEFAULT_NOTIFY_MESSAGE_SEND_FAILED,
+    DEFAULT_NOTIFY_TITLE,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
+    NOTIFY_EVENTS,
 )
 from .exceptions import CannotConnect, InvalidAuth
 
@@ -100,12 +112,59 @@ def _device_schema(defaults: dict[str, Any], devices: list[str]) -> vol.Schema:
     )
 
 
-def _options_schema(defaults: dict[str, Any], devices: list[str]) -> vol.Schema:
+def _notify_targets(hass: HomeAssistant) -> list[str]:
+    """Return selectable notify targets (notify entities and legacy services)."""
+    services = hass.services.async_services().get("notify", {})
+    targets = {f"notify.{name}" for name in services if name != "send_message"}
+    targets |= {state.entity_id for state in hass.states.async_all("notify")}
+    return sorted(targets)
+
+
+def _options_schema(hass: HomeAssistant, defaults: dict[str, Any]) -> vol.Schema:
     """Build options schema."""
-    del devices
+    targets = _notify_targets(hass)
+    saved_targets = list(defaults.get(CONF_NOTIFY_TARGETS, []))
+    for target in saved_targets:
+        if target not in targets:
+            targets.append(target)
     return vol.Schema(
         {
             vol.Required(CONF_AUTO_SEND, default=defaults.get(CONF_AUTO_SEND, DEFAULT_AUTO_SEND)): BooleanSelector(),
+            vol.Optional(CONF_NOTIFY_TARGETS, default=saved_targets): SelectSelector(
+                SelectSelectorConfig(
+                    options=targets,
+                    multiple=True,
+                    custom_value=True,
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                CONF_NOTIFY_EVENTS,
+                default=list(defaults.get(CONF_NOTIFY_EVENTS, DEFAULT_NOTIFY_EVENTS)),
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=NOTIFY_EVENTS,
+                    multiple=True,
+                    mode=SelectSelectorMode.LIST,
+                    translation_key="notify_events",
+                )
+            ),
+            vol.Optional(
+                CONF_NOTIFY_TITLE,
+                default=defaults.get(CONF_NOTIFY_TITLE, DEFAULT_NOTIFY_TITLE),
+            ): TextSelector(),
+            vol.Optional(
+                CONF_NOTIFY_MESSAGE_BOOK_ADDED,
+                default=defaults.get(CONF_NOTIFY_MESSAGE_BOOK_ADDED, DEFAULT_NOTIFY_MESSAGE_BOOK_ADDED),
+            ): TextSelector(TextSelectorConfig(multiline=True)),
+            vol.Optional(
+                CONF_NOTIFY_MESSAGE_EBOOK_SENT,
+                default=defaults.get(CONF_NOTIFY_MESSAGE_EBOOK_SENT, DEFAULT_NOTIFY_MESSAGE_EBOOK_SENT),
+            ): TextSelector(TextSelectorConfig(multiline=True)),
+            vol.Optional(
+                CONF_NOTIFY_MESSAGE_SEND_FAILED,
+                default=defaults.get(CONF_NOTIFY_MESSAGE_SEND_FAILED, DEFAULT_NOTIFY_MESSAGE_SEND_FAILED),
+            ): TextSelector(TextSelectorConfig(multiline=True)),
         }
     )
 
@@ -233,4 +292,4 @@ class AudiobookshelfOptionsFlow(OptionsFlow):
             CONF_AUTO_SEND: DEFAULT_AUTO_SEND,
             **dict(self._entry.options),
         }
-        return self.async_show_form(step_id="init", data_schema=_options_schema(defaults, []))
+        return self.async_show_form(step_id="init", data_schema=_options_schema(self.hass, defaults))

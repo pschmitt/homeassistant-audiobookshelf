@@ -9,7 +9,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.storage import Store
 
 from .api import AudiobookshelfClient
@@ -21,9 +20,9 @@ from .const import (
     EVENT_LIBRARY_ITEM_UNKNOWN,
     EVENT_LIBRARY_ITEM_UPDATED,
     EVENT_ITEM_RECEIVED,
-    ISSUE_MISSING_EBOOK,
-    ISSUE_MISSING_DEVICE,
-    ISSUE_SEND_FAILED,
+    NOTIFY_EVENT_BOOK_ADDED,
+    NOTIFY_EVENT_EBOOK_SENT,
+    NOTIFY_EVENT_SEND_FAILED,
     STORAGE_KEY,
     STORAGE_VERSION,
     SIGNAL_UPDATED,
@@ -36,6 +35,7 @@ from .exceptions import (
     SendFailed,
 )
 from .models import SendResult, normalize_ebook
+from .notifications import async_send_event_notification, title_authors
 from .services import async_update_service_descriptions
 
 _LOGGER = logging.getLogger(__name__)
@@ -184,6 +184,7 @@ class AudiobookshelfManager:
         )
         self.last_event = event
         self.hass.bus.async_fire(EVENT_ITEM_RECEIVED, event)
+        await self._async_notify(NOTIFY_EVENT_BOOK_ADDED, self._event_notify_context(event))
         if not self.entry.options.get(CONF_AUTO_SEND, False):
             return
         try:
@@ -236,7 +237,10 @@ class AudiobookshelfManager:
         if not resolved_device_name:
             err = MissingDevice("No Audiobookshelf e-reader device is configured")
             self.failed_count += 1
-            self._create_issue(ISSUE_MISSING_DEVICE, str(err))
+            await self._async_notify(
+                NOTIFY_EVENT_SEND_FAILED,
+                {**self._item_notify_context(None, item_id), "device": "", "reason": str(err)},
+            )
             raise err
 
         sent_key = self._sent_key(item_id, resolved_device_name)
@@ -254,17 +258,24 @@ class AudiobookshelfManager:
             self._async_write_state()
             return result
 
+        item: dict[str, Any] | None = None
         try:
             item = await self.client.async_get_item(item_id)
             ebook = normalize_ebook(item)
             await self.client.async_send_ebook_to_device(item_id, resolved_device_name)
         except MissingEbook as err:
             self.failed_count += 1
-            self._create_issue(ISSUE_MISSING_EBOOK, str(err))
+            await self._async_notify(
+                NOTIFY_EVENT_SEND_FAILED,
+                {**self._item_notify_context(item, item_id), "device": resolved_device_name, "reason": str(err)},
+            )
             raise
         except SendFailed as err:
             self.failed_count += 1
-            self._create_issue(ISSUE_SEND_FAILED, str(err))
+            await self._async_notify(
+                NOTIFY_EVENT_SEND_FAILED,
+                {**self._item_notify_context(item, item_id), "device": resolved_device_name, "reason": str(err)},
+            )
             raise
 
         self._sent_items[sent_key] = {
@@ -274,7 +285,6 @@ class AudiobookshelfManager:
         }
         self.sent_count = len(self._sent_items)
         await self.async_save()
-        self._delete_send_issues()
         result = SendResult(
             item_id=item_id,
             title=ebook.display_title,
@@ -284,6 +294,10 @@ class AudiobookshelfManager:
         )
         self.last_result = result
         self._async_write_state()
+        await self._async_notify(
+            NOTIFY_EVENT_EBOOK_SENT,
+            {**self._item_notify_context(item, item_id), "device": resolved_device_name},
+        )
         return result
 
     async def async_send_item(self, item_id: str, *, force: bool = False, source: str = "service") -> SendResult:
@@ -352,6 +366,43 @@ class AudiobookshelfManager:
             choices.append({"label": label, "value": book["item_id"]})
         return choices
 
+    async def _async_notify(self, event_type: str, context: dict[str, Any]) -> None:
+        """Send an optional, user-configured notification for an event."""
+        await async_send_event_notification(self.hass, self.entry, event_type, context)
+
+    def _event_notify_context(self, event: dict[str, Any]) -> dict[str, Any]:
+        """Build notification placeholders from a normalized library event."""
+        authors = event.get("authors") or []
+        return {
+            "title": event.get("title"),
+            "subtitle": event.get("subtitle"),
+            "authors": ", ".join(authors),
+            "series": ", ".join(event.get("series") or []),
+            "library": event.get("library_name"),
+            "item_url": event.get("item_url"),
+            "cover_url": event.get("cover_url"),
+            "title_authors": title_authors(event.get("title"), authors),
+        }
+
+    def _item_notify_context(self, item: dict[str, Any] | None, item_id: str) -> dict[str, Any]:
+        """Build notification placeholders from a raw ABS library item."""
+        item = item if isinstance(item, dict) else {}
+        media = item.get("media") if isinstance(item.get("media"), dict) else {}
+        metadata = media.get("metadata") if isinstance(media.get("metadata"), dict) else {}
+        authors = _extract_authors(metadata)
+        title = metadata.get("title") or item.get("title") or item_id
+        library_id = item.get("libraryId") or media.get("libraryId")
+        return {
+            "title": title,
+            "subtitle": metadata.get("subtitle"),
+            "authors": ", ".join(authors),
+            "series": ", ".join(_extract_series(metadata)),
+            "library": _resolve_library_name(library_id, self.book_libraries),
+            "item_url": _build_item_url(self.client.base_url, item_id),
+            "cover_url": _build_item_url(self.client.base_url, item_id, cover=True),
+            "title_authors": title_authors(str(title), authors),
+        }
+
     def _async_write_state(self) -> None:
         """Notify entities that manager state changed."""
         async_dispatcher_send(self.hass, f"{SIGNAL_UPDATED}_{self.entry.entry_id}")
@@ -360,24 +411,6 @@ class AudiobookshelfManager:
     def _sent_key(item_id: str, device_name: str | None = None) -> str:
         """Return a per-device sent marker key."""
         return item_id if not device_name else f"{item_id}:{device_name}"
-
-    def _create_issue(self, issue_id: str, detail: str) -> None:
-        """Create a repair issue for send failures."""
-        ir.async_create_issue(
-            self.hass,
-            DOMAIN,
-            f"{self.entry.entry_id}_{issue_id}",
-            is_fixable=True,
-            is_persistent=False,
-            severity=ir.IssueSeverity.ERROR,
-            translation_key=issue_id,
-            translation_placeholders={"detail": detail},
-        )
-
-    def _delete_send_issues(self) -> None:
-        """Clear transient send issues after a successful send."""
-        for issue_id in (ISSUE_MISSING_EBOOK, ISSUE_MISSING_DEVICE, ISSUE_SEND_FAILED):
-            ir.async_delete_issue(self.hass, DOMAIN, f"{self.entry.entry_id}_{issue_id}")
 
 
 def _normalize_event(
