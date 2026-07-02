@@ -76,12 +76,6 @@
       "server_version": {
         "name": "Server version"
       },
-      "ereader_devices": {
-        "name": "E-reader devices"
-      },
-      "default_ereader_device": {
-        "name": "Default e-reader device"
-      },
       "last_library_item": {
         "name": "Last library item"
       },

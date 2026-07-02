@@ -14,8 +14,6 @@ from .const import DOMAIN, SIGNAL_UPDATED
 SENSORS = (
     SensorEntityDescription(key="server_status", translation_key="server_status", icon="mdi:server", entity_category=EntityCategory.DIAGNOSTIC),
     SensorEntityDescription(key="server_version", translation_key="server_version", icon="mdi:tag-outline", entity_category=EntityCategory.DIAGNOSTIC),
-    SensorEntityDescription(key="ereader_devices", translation_key="ereader_devices", icon="mdi:tablet-cellphone"),
-    SensorEntityDescription(key="default_ereader_device", translation_key="default_ereader_device", icon="mdi:star-cog"),
     SensorEntityDescription(key="last_library_item", translation_key="last_library_item", icon="mdi:book-open-page-variant"),
     SensorEntityDescription(key="last_refresh", translation_key="last_refresh", device_class=SensorDeviceClass.TIMESTAMP, entity_category=EntityCategory.DIAGNOSTIC),
     SensorEntityDescription(key="sent_count", translation_key="sent_count", icon="mdi:book-check", entity_category=EntityCategory.DIAGNOSTIC),
@@ -92,10 +90,6 @@ class AudiobookshelfSensor(SensorEntity):
             return _server_status(self._manager.server_status)
         if self.entity_description.key == "server_version":
             return _server_version(self._manager.server_status)
-        if self.entity_description.key == "ereader_devices":
-            return len(self._manager.ereader_device_names)
-        if self.entity_description.key == "default_ereader_device":
-            return self._manager.default_device_name or "not_configured"
         if self.entity_description.key == "last_library_item":
             if self._manager.last_event is None:
                 return "none"
@@ -122,11 +116,6 @@ class AudiobookshelfSensor(SensorEntity):
         """Return extra attributes."""
         if self.entity_description.key == "server_status":
             return dict(self._manager.server_status)
-        if self.entity_description.key == "ereader_devices":
-            return {
-                "devices": self._manager.ereader_device_names,
-                "default_device": self._manager.default_device_name,
-            }
         if self.entity_description.key == "last_library_item":
             return self._manager.last_event
         if self.entity_description.key != "last_result" or self._manager.last_result is None:
