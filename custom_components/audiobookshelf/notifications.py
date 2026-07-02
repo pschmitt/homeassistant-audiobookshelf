@@ -7,6 +7,7 @@ send fails). Everything is opt-in: with no targets configured, nothing is sent.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import defaultdict
 from typing import Any
@@ -15,12 +16,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import (
+    CONF_NOTIFY_DATA,
     CONF_NOTIFY_EVENTS,
     CONF_NOTIFY_MESSAGE_BOOK_ADDED,
     CONF_NOTIFY_MESSAGE_EBOOK_SENT,
     CONF_NOTIFY_MESSAGE_SEND_FAILED,
     CONF_NOTIFY_TARGETS,
     CONF_NOTIFY_TITLE,
+    DEFAULT_NOTIFY_DATA_DICT,
     DEFAULT_NOTIFY_EVENTS,
     DEFAULT_NOTIFY_MESSAGE_BOOK_ADDED,
     DEFAULT_NOTIFY_MESSAGE_EBOOK_SENT,
@@ -59,6 +62,35 @@ def _render(template: str, context: dict[str, Any]) -> str:
         return template.strip()
 
 
+def _render_value(value: Any, context: dict[str, Any]) -> Any:
+    """Render strings inside arbitrary notification-data structures."""
+    if isinstance(value, str):
+        return _render(value, context)
+    if isinstance(value, list):
+        return [_render_value(entry, context) for entry in value]
+    if isinstance(value, dict):
+        return {key: _render_value(entry, context) for key, entry in value.items()}
+    return value
+
+
+def _notify_data(entry: ConfigEntry, event_type: str, context: dict[str, Any]) -> dict[str, Any]:
+    """Return extra notification data from options JSON."""
+    raw = entry.options.get(CONF_NOTIFY_DATA)
+    if raw in (None, ""):
+        data: Any = DEFAULT_NOTIFY_DATA_DICT
+    else:
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            _LOGGER.warning("Ignoring invalid Audiobookshelf notification data JSON for %s", event_type)
+            data = DEFAULT_NOTIFY_DATA_DICT
+    if not isinstance(data, dict):
+        _LOGGER.warning("Ignoring non-object Audiobookshelf notification data for %s", event_type)
+        return dict(DEFAULT_NOTIFY_DATA_DICT)
+    rendered = _render_value(data, context)
+    return rendered if isinstance(rendered, dict) else dict(DEFAULT_NOTIFY_DATA_DICT)
+
+
 async def async_send_event_notification(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -82,9 +114,10 @@ async def async_send_event_notification(
     if not message:
         return
     title = (options.get(CONF_NOTIFY_TITLE) or DEFAULT_NOTIFY_TITLE).strip() or None
+    data = _notify_data(entry, event_type, context)
 
     for target in targets:
-        await _async_call_target(hass, target, title, message)
+        await _async_call_target(hass, target, title, message, data)
 
 
 async def _async_call_target(
@@ -92,6 +125,7 @@ async def _async_call_target(
     target: str,
     title: str | None,
     message: str,
+    data: dict[str, Any],
 ) -> None:
     """Dispatch one notification, tolerating both notify entities and services.
 
@@ -108,11 +142,15 @@ async def _async_call_target(
             payload: dict[str, Any] = {"entity_id": target, "message": message}
             if title:
                 payload["title"] = title
+            if data:
+                payload["data"] = data
             await hass.services.async_call("notify", "send_message", payload, blocking=False)
             return
         payload = {"message": message}
         if title:
             payload["title"] = title
+        if data:
+            payload["data"] = data
         await hass.services.async_call(domain, service, payload, blocking=False)
     except Exception:  # noqa: BLE001 - a bad notify target must not break refresh/send
         _LOGGER.warning("Audiobookshelf notification to %s failed", target, exc_info=True)

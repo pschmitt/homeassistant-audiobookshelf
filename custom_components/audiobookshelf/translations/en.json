@@ -55,6 +55,7 @@
           "notify_targets": "Notification targets",
           "notify_events": "Notify on",
           "notify_title": "Notification title",
+          "notify_data": "Notification data (JSON)",
           "notify_message_book_added": "New-book message",
           "notify_message_ebook_sent": "Ebook-sent message",
           "notify_message_send_failed": "Send-failed message"
@@ -63,6 +64,7 @@
           "notify_targets": "Notify services or entities to alert (e.g. a phone's mobile app). Leave empty to disable notifications.",
           "notify_events": "Which events send a notification.",
           "notify_title": "Notification title used for every event.",
+          "notify_data": "Extra notification payload as a JSON object. Applies to every event. String values may use the same placeholders as the message templates. Default: {\"tag\": \"audiobookshelf\", \"timeout\": 3600}.",
           "notify_message_book_added": "Message template. Placeholders: {title}, {authors}, {title_authors}, {subtitle}, {series}, {library}, {item_url}, {cover_url}.",
           "notify_message_ebook_sent": "Message template. Placeholders: {title}, {authors}, {device}, {library}, {item_url}, {cover_url}.",
           "notify_message_send_failed": "Message template. Placeholders: {title}, {device}, {reason}."

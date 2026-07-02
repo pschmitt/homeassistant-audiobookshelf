@@ -26,6 +26,7 @@ from .const import (
     CONF_ABS_URL,
     CONF_AUTO_SEND,
     CONF_DEVICE_NAME,
+    CONF_NOTIFY_DATA,
     CONF_NOTIFY_EVENTS,
     CONF_NOTIFY_MESSAGE_BOOK_ADDED,
     CONF_NOTIFY_MESSAGE_EBOOK_SENT,
@@ -35,6 +36,7 @@ from .const import (
     CONF_VERIFY_SSL,
     DEFAULT_AUTO_SEND,
     DEFAULT_NAME,
+    DEFAULT_NOTIFY_DATA,
     DEFAULT_NOTIFY_EVENTS,
     DEFAULT_NOTIFY_MESSAGE_BOOK_ADDED,
     DEFAULT_NOTIFY_MESSAGE_EBOOK_SENT,
@@ -153,6 +155,10 @@ def _options_schema(hass: HomeAssistant, defaults: dict[str, Any]) -> vol.Schema
                 CONF_NOTIFY_TITLE,
                 default=defaults.get(CONF_NOTIFY_TITLE, DEFAULT_NOTIFY_TITLE),
             ): TextSelector(),
+            vol.Optional(
+                CONF_NOTIFY_DATA,
+                default=defaults.get(CONF_NOTIFY_DATA, DEFAULT_NOTIFY_DATA),
+            ): TextSelector(TextSelectorConfig(multiline=True)),
             vol.Optional(
                 CONF_NOTIFY_MESSAGE_BOOK_ADDED,
                 default=defaults.get(CONF_NOTIFY_MESSAGE_BOOK_ADDED, DEFAULT_NOTIFY_MESSAGE_BOOK_ADDED),
