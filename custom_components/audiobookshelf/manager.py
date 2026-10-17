@@ -7,9 +7,9 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.util import dt as dt_util
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .api import AudiobookshelfClient
 from .const import (
@@ -17,17 +17,16 @@ from .const import (
     ALL_DEVICES_LABEL,
     CONF_AUTO_SEND,
     CONF_DEVICE_NAME,
-    DOMAIN,
+    EVENT_ITEM_RECEIVED,
     EVENT_LIBRARY_ITEM_RECEIVED,
     EVENT_LIBRARY_ITEM_UNKNOWN,
     EVENT_LIBRARY_ITEM_UPDATED,
-    EVENT_ITEM_RECEIVED,
     NOTIFY_EVENT_BOOK_ADDED,
     NOTIFY_EVENT_EBOOK_SENT,
     NOTIFY_EVENT_SEND_FAILED,
+    SIGNAL_UPDATED,
     STORAGE_KEY,
     STORAGE_VERSION,
-    SIGNAL_UPDATED,
 )
 from .exceptions import (
     AudiobookshelfError,
@@ -94,15 +93,23 @@ class AudiobookshelfManager:
         self.book_libraries = {
             str(library["id"]): library
             for library in libraries
-            if isinstance(library, dict) and library.get("id") and library.get("mediaType") == "book"
+            if isinstance(library, dict)
+            and library.get("id")
+            and library.get("mediaType") == "book"
         }
         recently_added: dict[str, dict[str, Any] | None] = {}
         for library_id, library in self.book_libraries.items():
             library_name = library.get("name")
             try:
-                item = await self.client.async_get_recently_added_book_for_library(library_id, library_name)
+                item = await self.client.async_get_recently_added_book_for_library(
+                    library_id, library_name
+                )
             except CannotConnect:
-                _LOGGER.debug("Could not refresh Audiobookshelf recently added book for %s", library_id, exc_info=True)
+                _LOGGER.debug(
+                    "Could not refresh Audiobookshelf recently added book for %s",
+                    library_id,
+                    exc_info=True,
+                )
                 item = None
             recently_added[library_id] = _normalize_recently_added_book(item, library)
         self.recently_added_books_by_library = recently_added
@@ -254,7 +261,9 @@ class AudiobookshelfManager:
         nothing is configured) may be ``ALL_DEVICES`` to fan the send out to
         every e-reader device known to the server.
         """
-        resolved_device_name = device_name or self.entry.options.get(CONF_DEVICE_NAME) or ALL_DEVICES
+        resolved_device_name = (
+            device_name or self.entry.options.get(CONF_DEVICE_NAME) or ALL_DEVICES
+        )
 
         if resolved_device_name == ALL_DEVICES:
             return await self._async_send_ebook_to_all_devices(item_id, force=force, source=source)
@@ -283,14 +292,22 @@ class AudiobookshelfManager:
             self.failed_count += 1
             await self._async_notify(
                 NOTIFY_EVENT_SEND_FAILED,
-                {**self._item_notify_context(item, item_id), "device": resolved_device_name, "reason": str(err)},
+                {
+                    **self._item_notify_context(item, item_id),
+                    "device": resolved_device_name,
+                    "reason": str(err),
+                },
             )
             raise
         except SendFailed as err:
             self.failed_count += 1
             await self._async_notify(
                 NOTIFY_EVENT_SEND_FAILED,
-                {**self._item_notify_context(item, item_id), "device": resolved_device_name, "reason": str(err)},
+                {
+                    **self._item_notify_context(item, item_id),
+                    "device": resolved_device_name,
+                    "reason": str(err),
+                },
             )
             raise
 
@@ -337,7 +354,11 @@ class AudiobookshelfManager:
             self.failed_count += 1
             await self._async_notify(
                 NOTIFY_EVENT_SEND_FAILED,
-                {**self._item_notify_context(None, item_id), "device": ALL_DEVICES_LABEL, "reason": str(err)},
+                {
+                    **self._item_notify_context(None, item_id),
+                    "device": ALL_DEVICES_LABEL,
+                    "reason": str(err),
+                },
             )
             raise err
 
@@ -360,7 +381,9 @@ class AudiobookshelfManager:
                 skipped += 1
 
         if failed and not sent and not skipped:
-            raise SendFailed(str(last_error) if last_error else f"Failed to send to all {failed} device(s)")
+            raise SendFailed(
+                str(last_error) if last_error else f"Failed to send to all {failed} device(s)"
+            )
 
         if sent and failed:
             reason = f"{failed} of {len(device_names)} device(s) failed"
@@ -383,7 +406,9 @@ class AudiobookshelfManager:
         self._async_write_state()
         return result
 
-    async def async_send_item(self, item_id: str, *, force: bool = False, source: str = "service") -> SendResult:
+    async def async_send_item(
+        self, item_id: str, *, force: bool = False, source: str = "service"
+    ) -> SendResult:
         """Backward-compatible wrapper for older service callers."""
         return await self.async_send_ebook_to_device(item_id, force=force, source=source)
 
@@ -519,11 +544,7 @@ def _normalize_event(
     source_event = source_event or _extract_source_event(payload)
     event_type = _event_type_from_source(source_event)
 
-    library_id = (
-        item.get("libraryId")
-        or payload.get("libraryId")
-        or payload.get("library_id")
-    )
+    library_id = item.get("libraryId") or payload.get("libraryId") or payload.get("library_id")
     library_name = _resolve_library_name(library_id, libraries)
     ebook_file = media.get("ebookFile") or item.get("ebookFile")
 
@@ -672,7 +693,9 @@ def _extract_authors(metadata: dict[str, Any]) -> list[str]:
     return []
 
 
-def _normalize_recently_added_book(item: dict[str, Any] | None, library: dict[str, Any]) -> dict[str, Any] | None:
+def _normalize_recently_added_book(
+    item: dict[str, Any] | None, library: dict[str, Any]
+) -> dict[str, Any] | None:
     """Normalize an ABS library item for the recently added book sensor."""
     if not item:
         return {

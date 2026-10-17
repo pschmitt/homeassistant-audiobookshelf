@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant, callback
@@ -84,7 +83,9 @@ async def _async_get_ereader_devices(hass: HomeAssistant, data: dict[str, Any]) 
         devices = await client.async_get_ereader_devices()
     finally:
         await session.close()
-    names = [str(device["name"]) for device in devices if isinstance(device, dict) and device.get("name")]
+    names = [
+        str(device["name"]) for device in devices if isinstance(device, dict) and device.get("name")
+    ]
     return sorted(names)
 
 
@@ -95,7 +96,9 @@ def _connection_schema(defaults: dict[str, Any], *, token_optional: bool = False
         {
             vol.Required(CONF_ABS_URL, default=defaults.get(CONF_ABS_URL, "")): TextSelector(),
             token_key: TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
-            vol.Required(CONF_VERIFY_SSL, default=defaults.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)): BooleanSelector(),
+            vol.Required(
+                CONF_VERIFY_SSL, default=defaults.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+            ): BooleanSelector(),
         }
     )
 
@@ -104,7 +107,9 @@ def _device_schema(defaults: dict[str, Any], devices: list[str]) -> vol.Schema:
     """Build e-reader device schema, offering "all devices" alongside real ones."""
     selected = defaults.get(CONF_DEVICE_NAME) or ALL_DEVICES
     options = [SelectOptionDict(value=ALL_DEVICES, label=ALL_DEVICES_LABEL)]
-    options.extend(SelectOptionDict(value=name, label=name) for name in devices if name != ALL_DEVICES)
+    options.extend(
+        SelectOptionDict(value=name, label=name) for name in devices if name != ALL_DEVICES
+    )
     if selected not in (ALL_DEVICES, *devices):
         options.append(SelectOptionDict(value=selected, label=selected))
     return vol.Schema(
@@ -133,7 +138,9 @@ def _options_schema(hass: HomeAssistant, defaults: dict[str, Any]) -> vol.Schema
             targets.append(target)
     return vol.Schema(
         {
-            vol.Required(CONF_AUTO_SEND, default=defaults.get(CONF_AUTO_SEND, DEFAULT_AUTO_SEND)): BooleanSelector(),
+            vol.Required(
+                CONF_AUTO_SEND, default=defaults.get(CONF_AUTO_SEND, DEFAULT_AUTO_SEND)
+            ): BooleanSelector(),
             vol.Optional(CONF_NOTIFY_TARGETS, default=saved_targets): SelectSelector(
                 SelectSelectorConfig(
                     options=targets,
@@ -163,15 +170,21 @@ def _options_schema(hass: HomeAssistant, defaults: dict[str, Any]) -> vol.Schema
             ): TextSelector(TextSelectorConfig(multiline=True)),
             vol.Optional(
                 CONF_NOTIFY_MESSAGE_BOOK_ADDED,
-                default=defaults.get(CONF_NOTIFY_MESSAGE_BOOK_ADDED, DEFAULT_NOTIFY_MESSAGE_BOOK_ADDED),
+                default=defaults.get(
+                    CONF_NOTIFY_MESSAGE_BOOK_ADDED, DEFAULT_NOTIFY_MESSAGE_BOOK_ADDED
+                ),
             ): TextSelector(TextSelectorConfig(multiline=True)),
             vol.Optional(
                 CONF_NOTIFY_MESSAGE_EBOOK_SENT,
-                default=defaults.get(CONF_NOTIFY_MESSAGE_EBOOK_SENT, DEFAULT_NOTIFY_MESSAGE_EBOOK_SENT),
+                default=defaults.get(
+                    CONF_NOTIFY_MESSAGE_EBOOK_SENT, DEFAULT_NOTIFY_MESSAGE_EBOOK_SENT
+                ),
             ): TextSelector(TextSelectorConfig(multiline=True)),
             vol.Optional(
                 CONF_NOTIFY_MESSAGE_SEND_FAILED,
-                default=defaults.get(CONF_NOTIFY_MESSAGE_SEND_FAILED, DEFAULT_NOTIFY_MESSAGE_SEND_FAILED),
+                default=defaults.get(
+                    CONF_NOTIFY_MESSAGE_SEND_FAILED, DEFAULT_NOTIFY_MESSAGE_SEND_FAILED
+                ),
             ): TextSelector(TextSelectorConfig(multiline=True)),
         }
     )
@@ -232,7 +245,9 @@ class AudiobookshelfConfigFlow(ConfigFlow, domain=DOMAIN):
             )
         return self.async_show_form(step_id="device", data_schema=_device_schema({}, self._devices))
 
-    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Handle reconfiguration."""
         entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}
@@ -247,7 +262,9 @@ class AudiobookshelfConfigFlow(ConfigFlow, domain=DOMAIN):
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             else:
-                await self.async_set_unique_id(str(user.get("id") or user.get("username") or data[CONF_ABS_URL]).lower())
+                await self.async_set_unique_id(
+                    str(user.get("id") or user.get("username") or data[CONF_ABS_URL]).lower()
+                )
                 self._abort_if_unique_id_mismatch()
                 return self.async_update_reload_and_abort(entry, data_updates=data)
         return self.async_show_form(
@@ -261,7 +278,9 @@ class AudiobookshelfConfigFlow(ConfigFlow, domain=DOMAIN):
         del entry_data
         return await self.async_step_reauth_confirm()
 
-    async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Collect a new token."""
         entry = self._get_reauth_entry()
         errors: dict[str, str] = {}
@@ -277,7 +296,13 @@ class AudiobookshelfConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_update_reload_and_abort(entry, data=data)
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema({vol.Required(CONF_ABS_TOKEN): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))}),
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_ABS_TOKEN): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    )
+                }
+            ),
             errors=errors,
         )
 
@@ -300,4 +325,6 @@ class AudiobookshelfOptionsFlow(OptionsFlow):
             CONF_AUTO_SEND: DEFAULT_AUTO_SEND,
             **dict(self._entry.options),
         }
-        return self.async_show_form(step_id="init", data_schema=_options_schema(self.hass, defaults))
+        return self.async_show_form(
+            step_id="init", data_schema=_options_schema(self.hass, defaults)
+        )

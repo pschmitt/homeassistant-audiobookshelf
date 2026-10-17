@@ -6,20 +6,59 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, Sen
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, SIGNAL_UPDATED
 
 SENSORS = (
-    SensorEntityDescription(key="server_status", translation_key="server_status", icon="mdi:server", entity_category=EntityCategory.DIAGNOSTIC),
-    SensorEntityDescription(key="server_version", translation_key="server_version", icon="mdi:tag-outline", entity_category=EntityCategory.DIAGNOSTIC),
-    SensorEntityDescription(key="last_library_item", translation_key="last_library_item", icon="mdi:book-open-page-variant"),
-    SensorEntityDescription(key="last_refresh", translation_key="last_refresh", device_class=SensorDeviceClass.TIMESTAMP, entity_category=EntityCategory.DIAGNOSTIC),
-    SensorEntityDescription(key="sent_count", translation_key="sent_count", icon="mdi:book-check", entity_category=EntityCategory.DIAGNOSTIC),
-    SensorEntityDescription(key="skipped_count", translation_key="skipped_count", icon="mdi:book-cancel", entity_category=EntityCategory.DIAGNOSTIC),
-    SensorEntityDescription(key="failed_count", translation_key="failed_count", icon="mdi:book-alert", entity_category=EntityCategory.DIAGNOSTIC),
-    SensorEntityDescription(key="last_result", translation_key="last_result", icon="mdi:book-sync", entity_category=EntityCategory.DIAGNOSTIC),
+    SensorEntityDescription(
+        key="server_status",
+        translation_key="server_status",
+        icon="mdi:server",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="server_version",
+        translation_key="server_version",
+        icon="mdi:tag-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="last_library_item",
+        translation_key="last_library_item",
+        icon="mdi:book-open-page-variant",
+    ),
+    SensorEntityDescription(
+        key="last_refresh",
+        translation_key="last_refresh",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="sent_count",
+        translation_key="sent_count",
+        icon="mdi:book-check",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="skipped_count",
+        translation_key="skipped_count",
+        icon="mdi:book-cancel",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="failed_count",
+        translation_key="failed_count",
+        icon="mdi:book-alert",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="last_result",
+        translation_key="last_result",
+        icon="mdi:book-sync",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
 )
 
 
@@ -93,7 +132,11 @@ class AudiobookshelfSensor(SensorEntity):
         if self.entity_description.key == "last_library_item":
             if self._manager.last_event is None:
                 return "none"
-            return self._manager.last_event.get("title") or self._manager.last_event.get("item_id") or "unknown"
+            return (
+                self._manager.last_event.get("title")
+                or self._manager.last_event.get("item_id")
+                or "unknown"
+            )
         if self.entity_description.key == "last_refresh":
             return self._manager.last_refresh
         if self.entity_description.key == "sent_count":

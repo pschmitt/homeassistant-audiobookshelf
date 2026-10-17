@@ -13,8 +13,17 @@ from .const import DOMAIN
 from .exceptions import AudiobookshelfError
 
 BUTTONS = (
-    ButtonEntityDescription(key="refresh_data", translation_key="refresh_data", icon="mdi:refresh", entity_category=EntityCategory.DIAGNOSTIC),
-    ButtonEntityDescription(key="send_last_ebook_to_device", translation_key="send_last_ebook_to_device", icon="mdi:book-arrow-right"),
+    ButtonEntityDescription(
+        key="refresh_data",
+        translation_key="refresh_data",
+        icon="mdi:refresh",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    ButtonEntityDescription(
+        key="send_last_ebook_to_device",
+        translation_key="send_last_ebook_to_device",
+        icon="mdi:book-arrow-right",
+    ),
 )
 
 

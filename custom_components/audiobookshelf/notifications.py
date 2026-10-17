@@ -54,7 +54,9 @@ def title_authors(title: str | None, authors: list[str] | None) -> str:
 
 def _render(template: str, context: dict[str, Any]) -> str:
     """Fill a template, leaving unknown placeholders blank instead of raising."""
-    safe = defaultdict(str, {key: ("" if value is None else str(value)) for key, value in context.items()})
+    safe = defaultdict(
+        str, {key: ("" if value is None else str(value)) for key, value in context.items()}
+    )
     try:
         return template.format_map(safe).strip()
     except (KeyError, IndexError, ValueError):
@@ -82,7 +84,9 @@ def _notify_data(entry: ConfigEntry, event_type: str, context: dict[str, Any]) -
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
-            _LOGGER.warning("Ignoring invalid Audiobookshelf notification data JSON for %s", event_type)
+            _LOGGER.warning(
+                "Ignoring invalid Audiobookshelf notification data JSON for %s", event_type
+            )
             data = DEFAULT_NOTIFY_DATA_DICT
     if not isinstance(data, dict):
         _LOGGER.warning("Ignoring non-object Audiobookshelf notification data for %s", event_type)
