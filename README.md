@@ -1,5 +1,7 @@
 # Audiobookshelf
 
+[![Open this integration in Home Assistant Marketplace](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=pschmitt&repository=homeassistant-audiobookshelf&category=integration)
+
 <img src="logo.png" alt="Audiobookshelf logo" width="300">
 
 Home Assistant custom integration for Audiobookshelf. It polls each book library for newly added items, exposes them as Home Assistant events, and can ask Audiobookshelf to send ebook items to one of its configured e-reader devices.
@@ -16,6 +18,14 @@ Home Assistant custom integration for Audiobookshelf. It polls each book library
 - Duplicate suppression backed by Home Assistant storage.
 - Manual `audiobookshelf.send_ebook_to_device` and `audiobookshelf.reset_sent_item` services.
 - Uses Audiobookshelf's own e-reader and email settings. Home Assistant does not store SMTP credentials or send mail directly.
+
+## Install
+
+Use the badge above to add this repository as a custom integration in Home
+Assistant Marketplace (Home Assistant 2026.11 or later), then install it and
+restart Home Assistant. On older versions, add the repository as a custom
+integration in HACS. Go to **Settings → Devices & services → Add integration**
+and select **Audiobookshelf** to configure your server.
 
 ## New book detection
 
